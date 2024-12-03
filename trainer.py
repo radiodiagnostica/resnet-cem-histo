@@ -168,11 +168,11 @@ def format_metric(value):
         value = value.cpu().item()
     return f"{value:.4f}" if not np.isnan(value) else "N/A"
 
-def main(target_metric, num_epochs, patience):
+def main(target_metric, num_epochs, patience, data_dir):
     print(f"Training with target metric: {target_metric}, epochs: {num_epochs}, patience: {patience}")
+    print(f"Using dataset directory: {data_dir}")
 
     # Load Data
-    data_dir = "dataset"
     image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
                       for x in ['train', 'val']}
     dataloaders = {x: DataLoader(image_datasets[x], batch_size=32, shuffle=True, num_workers=0)
@@ -289,7 +289,9 @@ if __name__ == '__main__':
                         help='Metric to optimize during training')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Number of training epochs')
-    parser.add_argument('--patience', type=int, default=10,
+    parser.add_argument('--patience', type=int, default=50,
                         help='Number of epochs with no improvement after which training will be stopped')
+    parser.add_argument('--data_dir', type=str, default='dataset',
+                        help='Path to the dataset directory')
     args = parser.parse_args()
-    main(args.metric, args.epochs, args.patience)
+    main(args.metric, args.epochs, args.patience, args.data_dir)
