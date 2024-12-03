@@ -12,6 +12,8 @@
 | Balanced Accuracy | 0.7003 | 0.7020 |
 | AUC-ROC | 0.9092 | 0.9008 |
 
+![Sample Run Results](sample-run.png)
+
 ## Project Structure
 
 This project contains two main scripts:
