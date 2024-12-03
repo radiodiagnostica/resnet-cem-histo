@@ -73,7 +73,7 @@ python train_model.py [--metric METRIC] [--epochs EPOCHS] [--patience PATIENCE] 
 
 - `--metric`: Metric to optimize during training (choices: accuracy, precision, recall, f1, mcc, balanced_acc, auc_roc; default: accuracy)
 - `--epochs`: Number of training epochs (default: 50)
-- `--patience`: Number of epochs with no improvement after which training will be stopped (default: 10)
+- `--patience`: Number of epochs with no improvement after which training will be stopped (default: 50)
 - `--data_dir`: Path to the prepared dataset directory (default: 'dataset')
 
 ### Example
