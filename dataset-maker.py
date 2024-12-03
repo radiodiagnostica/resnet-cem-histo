@@ -1,3 +1,4 @@
+import argparse
 import os
 import csv
 import shutil
@@ -83,9 +84,16 @@ def create_resnet_dataset(csv_file, root_dir, output_dir, train_ratio=0.8):
             print(f"No matching folder found for patient: {patient_name}")
 
 if __name__ == "__main__":
-    csv_file = "dataset-map.csv"
-    root_dir = "."
-    output_dir = "dataset"
+    parser = argparse.ArgumentParser(description='Prepare dataset for ResNet training')
+    parser.add_argument('--csv_file', type=str, default='dataset-map.csv',
+                        help='Path to the CSV file containing patient labels')
+    parser.add_argument('--root_dir', type=str, default='.',
+                        help='Root directory containing patient folders')
+    parser.add_argument('--output_dir', type=str, default='dataset',
+                        help='Output directory for the prepared dataset')
+    parser.add_argument('--train_ratio', type=float, default=0.8,
+                        help='Ratio of data to use for training (default: 0.8)')
+    args = parser.parse_args()
     
-    create_resnet_dataset(csv_file, root_dir, output_dir)
+    create_resnet_dataset(args.csv_file, args.root_dir, args.output_dir, args.train_ratio)
     print("Dataset creation completed.")
