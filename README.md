@@ -1,5 +1,19 @@
 # ResNet for Breast Cancer Hormone Receptors Prediction from CEM
 
+## Results
+
+| Metric | Best Training Value | Best Validation Value |
+|--------|---------------------|------------------------|
+| Accuracy | 90.99% | 91.21% |
+| Precision | 91.35% | 90.65% |
+| Recall | 90.99% | 91.21% |
+| F1 Score | 0.8939 | 0.8990 |
+| MCC | 0.5860 | 0.5508 |
+| Balanced Accuracy | 0.7003 | 0.7020 |
+| AUC-ROC | 0.9092 | 0.9008 |
+
+## Project Structure
+
 This project contains two main scripts:
 1. `dataset-maker.py`: Prepares the dataset for training
 2. `train_model.py`: Trains a ResNet model on the prepared dataset
