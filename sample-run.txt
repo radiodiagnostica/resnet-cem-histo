@@ -1,3 +1,13 @@
+Train Dataset Distribution:
+  Class 1: 275 images (85.40%)
+  Class 2: 47 images (14.60%)
+  Total: 322 images
+
+Val Dataset Distribution:
+  Class 1: 79 images (86.81%)
+  Class 2: 12 images (13.19%)
+  Total: 91 images
+
 Training with target metric: accuracy, epochs: 50, patience: 50
 
 Epoch 1/50
