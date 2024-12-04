@@ -168,6 +168,19 @@ def format_metric(value):
         value = value.cpu().item()
     return f"{value:.4f}" if not np.isnan(value) else "N/A"
 
+def analyze_dataset(image_datasets):
+    for phase in ['train', 'val']:
+        print(f"\n{phase.capitalize()} Dataset Distribution:")
+        class_counts = {cls: 0 for cls in image_datasets[phase].classes}
+        for _, label in image_datasets[phase].images:
+            class_counts[image_datasets[phase].classes[label]] += 1
+        
+        total_images = sum(class_counts.values())
+        for cls, count in class_counts.items():
+            percentage = (count / total_images) * 100
+            print(f"  Class {cls}: {count} images ({percentage:.2f}%)")
+        print(f"  Total: {total_images} images")
+
 def main(target_metric, num_epochs, patience, data_dir):
     print(f"Training with target metric: {target_metric}, epochs: {num_epochs}, patience: {patience}")
     print(f"Using dataset directory: {data_dir}")
@@ -179,6 +192,9 @@ def main(target_metric, num_epochs, patience, data_dir):
                    for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     class_names = image_datasets['train'].classes
+
+    # Analyze dataset distribution and print it
+    analyze_dataset(image_datasets)
 
     # Load pre-trained ResNet model
     model = create_model(len(class_names))
