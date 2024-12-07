@@ -113,40 +113,6 @@ def calculate_auc_roc(y_true, y_scores):
             return roc_auc_score(y_true, y_scores[:, 1])  # For binary classification
         except ValueError:
             return float('nan')
-    
-def evaluate_model(model, dataloader, criterion, device):
-    model.eval()
-    running_loss = 0.0
-    running_corrects = 0
-    all_labels = []
-    all_preds = []
-    all_scores = []
-    
-    for inputs, labels in dataloader:
-        inputs = inputs.to(device)
-        labels = labels.to(device)
-        
-        with torch.no_grad():
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
-            loss = criterion(outputs, labels)
-        
-        running_loss += loss.item() * inputs.size(0)
-        running_corrects += torch.sum(preds == labels.data)
-        
-        all_labels.extend(labels.cpu().detach().numpy())
-        all_preds.extend(preds.cpu().detach().numpy())
-        all_scores.extend(outputs.cpu().detach().numpy())
-    
-    epoch_loss = running_loss / len(dataloader.dataset)
-    epoch_acc = running_corrects.float() / len(dataloader.dataset)
-    
-    # Calculate additional metrics
-    precision, recall, f1, mcc, balanced_acc, auc_roc = calculate_metrics(
-        np.array(all_labels), np.array(all_preds), np.array(all_scores)
-    )
-    
-    return epoch_loss, epoch_acc, precision, recall, f1, mcc, balanced_acc, auc_roc
 
 def create_model(num_classes):
     model = models.resnet50(pretrained=True)
