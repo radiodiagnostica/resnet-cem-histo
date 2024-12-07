@@ -17,6 +17,8 @@ import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
 from scipy import stats
+from scipy.stats import chi2_contingency
+from scipy.stats import fisher_exact
 from sklearn.metrics import confusion_matrix
 from sklearn.utils import resample
 
@@ -80,50 +82,100 @@ data_transforms = {
 }
 
 def calculate_metrics(y_true, y_pred, y_scores, n_bootstrap=1000, confidence_level=0.95):
-    # Calculate confidence intervals and p-values
-    metrics = {
-        'accuracy': calculate_ci_and_pvalue(y_true, y_pred, accuracy_score, n_bootstrap, confidence_level),
-        'precision': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: precision_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-        'recall': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: recall_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-        'f1': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: f1_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-        'mcc': calculate_ci_and_pvalue(y_true, y_pred, matthews_corrcoef, n_bootstrap, confidence_level),
-        'balanced_acc': calculate_ci_and_pvalue(y_true, y_pred, balanced_accuracy_score, n_bootstrap, confidence_level),
-        'auc_roc': calculate_ci_and_pvalue(y_true, y_scores, calculate_auc_roc, n_bootstrap, confidence_level)
-    }
-
+    # Suppress the UndefinedMetricWarning
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UndefinedMetricWarning)
+        
+        metrics = {
+            'accuracy': calculate_ci_and_pvalue(y_true, y_pred, accuracy_score, n_bootstrap, confidence_level),
+            'precision': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: precision_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+            'recall': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: recall_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+            'f1': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: f1_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+            'mcc': calculate_ci_and_pvalue(y_true, y_pred, matthews_corrcoef, n_bootstrap, confidence_level),
+            'balanced_acc': calculate_ci_and_pvalue(y_true, y_pred, balanced_accuracy_score, n_bootstrap, confidence_level),
+            'auc_roc': calculate_ci_and_pvalue(y_true, y_scores, calculate_auc_roc, n_bootstrap, confidence_level)
+        }
+    
     return metrics
 
 def calculate_ci_and_pvalue(y_true, y_pred, metric_func, n_bootstrap=1000, confidence_level=0.95):
-    # Calculate the observed metric
     observed_metric = metric_func(y_true, y_pred)
     
-    # Perform bootstrap resampling
-    n_samples = len(y_true)
-    bootstrap_metrics = []
+    # Helper function to identify the metric type
+    def identify_metric(func):
+        if func == accuracy_score or (hasattr(func, '__name__') and func.__name__ == 'accuracy_score'):
+            return 'accuracy'
+        elif func in [precision_score, recall_score, f1_score] or \
+             (hasattr(func, '__name__') and func.__name__ in ['precision_score', 'recall_score', 'f1_score']) or \
+             (callable(func) and func.__name__ == '<lambda>'):  # This line handles lambda functions
+            return 'classification'
+        elif func == matthews_corrcoef or (hasattr(func, '__name__') and func.__name__ == 'matthews_corrcoef'):
+            return 'mcc'
+        elif func in [balanced_accuracy_score, calculate_auc_roc] or \
+             (hasattr(func, '__name__') and func.__name__ in ['balanced_accuracy_score', 'calculate_auc_roc']):
+            return 'balanced'
+        else:
+            return 'unknown'
+
+    metric_type = identify_metric(metric_func)
     
-    for _ in range(n_bootstrap):
-        indices = np.random.randint(0, n_samples, n_samples)
-        y_true_resampled = y_true[indices]
-        y_pred_resampled = y_pred[indices]
-        bootstrap_metrics.append(metric_func(y_true_resampled, y_pred_resampled))
+    if metric_type == 'accuracy':
+        # Use Wilson score interval for accuracy
+        n = len(y_true)
+        z = stats.norm.ppf((1 + confidence_level) / 2)
+        p = observed_metric
+        ci_lower = (p + z**2/(2*n) - z * np.sqrt((p*(1-p)+z**2/(4*n))/n)) / (1+z**2/n)
+        ci_upper = (p + z**2/(2*n) + z * np.sqrt((p*(1-p)+z**2/(4*n))/n)) / (1+z**2/n)
+        
+        # Binomial test for p-value
+        n_correct = int(observed_metric * n)
+        p_value = stats.binomtest(n_correct, n, p=0.5, alternative='two-sided').pvalue
     
-    bootstrap_metrics = np.array(bootstrap_metrics)
+    elif metric_type == 'classification':
+        # Use bootstrap for CI
+        bootstrap_metrics = []
+        for _ in range(n_bootstrap):
+            indices = np.random.randint(0, len(y_true), len(y_true))
+            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
+        
+        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
+        
+        # Fisher's exact test for p-value
+        cm = confusion_matrix(y_true, y_pred)
+        _, p_value = fisher_exact(cm)
+        
+        # Cohen's h for effect size
+        p1 = cm[1, 1] / (cm[1, 0] + cm[1, 1]) if (cm[1, 0] + cm[1, 1]) > 0 else 0  # True Positive Rate
+        p2 = cm[0, 1] / (cm[0, 0] + cm[0, 1]) if (cm[0, 0] + cm[0, 1]) > 0 else 0  # False Positive Rate
+        h = 2 * np.arcsin(np.sqrt(p1)) - 2 * np.arcsin(np.sqrt(p2))  # Cohen's h
     
-    # Calculate confidence interval
-    ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
+    elif metric_type == 'mcc':
+        # Use bootstrap for CI
+        bootstrap_metrics = []
+        for _ in range(n_bootstrap):
+            indices = np.random.randint(0, len(y_true), len(y_true))
+            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
+        
+        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
+        
+        # Fisher's z-transformation for p-value
+        r = observed_metric
+        z = np.arctanh(r)
+        se = 1 / np.sqrt(len(y_true) - 3)
+        p_value = 2 * (1 - stats.norm.cdf(abs(z) / se))
     
-    # Calculate p-value (two-tailed test)
-    if metric_func.__name__ == 'accuracy_score':
-        null_hypothesis = 0.5
-    elif metric_func.__name__ in ['precision_score', 'recall_score', 'f1_score']:
-        null_hypothesis = 1 / len(np.unique(y_true))  # Assuming balanced classes
+    elif metric_type == 'balanced':
+        # Use bootstrap for CI and p-value
+        bootstrap_metrics = []
+        for _ in range(n_bootstrap):
+            indices = np.random.randint(0, len(y_true), len(y_true))
+            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
+        
+        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
+        p_value = np.mean(np.array(bootstrap_metrics) <= 0.5) * 2  # Two-tailed test
+    
     else:
-        null_hypothesis = 0  # For MCC, balanced accuracy, and AUC-ROC
-    
-    p_value = np.mean(np.abs(bootstrap_metrics - null_hypothesis) >= np.abs(observed_metric - null_hypothesis)) * 2
-    
-    # Ensure p-value is within [0, 1]
-    p_value = min(max(p_value, 0), 1)
+        raise ValueError(f"Unsupported metric function: {metric_func}")
     
     return observed_metric, ci_lower, ci_upper, p_value
 
@@ -165,18 +217,24 @@ def format_metric(metric_tuple):
     else:
         raise ValueError(f"Unexpected metric tuple length: {len(metric_tuple)}")
 
+    def is_nan(x):
+        try:
+            return np.isnan(x)
+        except TypeError:
+            return False
+
     if isinstance(value, torch.Tensor):
         value = value.cpu().item()
     
-    value_str = f"{value:.4f}" if not np.isnan(value) else "N/A"
+    value_str = f"{value:.4f}" if not is_nan(value) else "N/A"
     
     if ci_lower is not None and ci_upper is not None:
-        ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not np.isnan(ci_lower) and not np.isnan(ci_upper) else "N/A"
+        ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not (is_nan(ci_lower) or is_nan(ci_upper)) else "N/A"
     else:
         ci_str = "N/A"
     
     if p_value is not None:
-        p_str = f"{p_value:.4f}" if not np.isnan(p_value) else "N/A"
+        p_str = f"{p_value:.4f}" if not is_nan(p_value) else "N/A"
     else:
         p_str = "N/A"
     
