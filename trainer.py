@@ -12,10 +12,13 @@ import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing
 from sklearn.metrics import roc_auc_score
-from sklearn.metrics import f1_score, precision_score, recall_score, matthews_corrcoef, balanced_accuracy_score
+from sklearn.metrics import f1_score, precision_score, recall_score, matthews_corrcoef, balanced_accuracy_score, accuracy_score
 import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
+from scipy import stats
+from sklearn.metrics import confusion_matrix
+from sklearn.utils import resample
 
 # Check if MPS is available
 if torch.backends.mps.is_available():
@@ -76,29 +79,53 @@ data_transforms = {
     ]),
 }
 
-def calculate_metrics(y_true, y_pred, y_scores):
-    # Suppress the UndefinedMetricWarning
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=UndefinedMetricWarning)
-        
-        precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
-        recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
-        f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
-    
-    mcc = matthews_corrcoef(y_true, y_pred)
-    balanced_acc = balanced_accuracy_score(y_true, y_pred)
-    auc_roc = calculate_auc_roc(y_true, y_scores)
-    accuracy = (y_true == y_pred).mean()
-    
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-        'mcc': mcc,
-        'balanced_acc': balanced_acc,
-        'auc_roc': auc_roc
+def calculate_metrics(y_true, y_pred, y_scores, n_bootstrap=1000, confidence_level=0.95):
+    # Calculate confidence intervals and p-values
+    metrics = {
+        'accuracy': calculate_ci_and_pvalue(y_true, y_pred, accuracy_score, n_bootstrap, confidence_level),
+        'precision': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: precision_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+        'recall': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: recall_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+        'f1': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: f1_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
+        'mcc': calculate_ci_and_pvalue(y_true, y_pred, matthews_corrcoef, n_bootstrap, confidence_level),
+        'balanced_acc': calculate_ci_and_pvalue(y_true, y_pred, balanced_accuracy_score, n_bootstrap, confidence_level),
+        'auc_roc': calculate_ci_and_pvalue(y_true, y_scores, calculate_auc_roc, n_bootstrap, confidence_level)
     }
+
+    return metrics
+
+def calculate_ci_and_pvalue(y_true, y_pred, metric_func, n_bootstrap=1000, confidence_level=0.95):
+    # Calculate the observed metric
+    observed_metric = metric_func(y_true, y_pred)
+    
+    # Perform bootstrap resampling
+    n_samples = len(y_true)
+    bootstrap_metrics = []
+    
+    for _ in range(n_bootstrap):
+        indices = np.random.randint(0, n_samples, n_samples)
+        y_true_resampled = y_true[indices]
+        y_pred_resampled = y_pred[indices]
+        bootstrap_metrics.append(metric_func(y_true_resampled, y_pred_resampled))
+    
+    bootstrap_metrics = np.array(bootstrap_metrics)
+    
+    # Calculate confidence interval
+    ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
+    
+    # Calculate p-value (two-tailed test)
+    if metric_func.__name__ == 'accuracy_score':
+        null_hypothesis = 0.5
+    elif metric_func.__name__ in ['precision_score', 'recall_score', 'f1_score']:
+        null_hypothesis = 1 / len(np.unique(y_true))  # Assuming balanced classes
+    else:
+        null_hypothesis = 0  # For MCC, balanced accuracy, and AUC-ROC
+    
+    p_value = np.mean(np.abs(bootstrap_metrics - null_hypothesis) >= np.abs(observed_metric - null_hypothesis)) * 2
+    
+    # Ensure p-value is within [0, 1]
+    p_value = min(max(p_value, 0), 1)
+    
+    return observed_metric, ci_lower, ci_upper, p_value
 
 def calculate_auc_roc(y_true, y_scores):
     # For multi-class, we use one-vs-rest approach
@@ -129,10 +156,31 @@ def create_model(num_classes):
     )
     return model
 
-def format_metric(value):
+def format_metric(metric_tuple):
+    if len(metric_tuple) == 4:
+        value, ci_lower, ci_upper, p_value = metric_tuple
+    elif len(metric_tuple) == 1:
+        value = metric_tuple[0]
+        ci_lower, ci_upper, p_value = None, None, None
+    else:
+        raise ValueError(f"Unexpected metric tuple length: {len(metric_tuple)}")
+
     if isinstance(value, torch.Tensor):
         value = value.cpu().item()
-    return f"{value:.4f}" if not np.isnan(value) else "N/A"
+    
+    value_str = f"{value:.4f}" if not np.isnan(value) else "N/A"
+    
+    if ci_lower is not None and ci_upper is not None:
+        ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not np.isnan(ci_lower) and not np.isnan(ci_upper) else "N/A"
+    else:
+        ci_str = "N/A"
+    
+    if p_value is not None:
+        p_str = f"{p_value:.4f}" if not np.isnan(p_value) else "N/A"
+    else:
+        p_str = "N/A"
+    
+    return f"{value_str} CI: {ci_str} p: {p_str}"
 
 def analyze_dataset(image_datasets):
     for phase in ['train', 'val']:
@@ -147,9 +195,17 @@ def analyze_dataset(image_datasets):
             print(f"  Class {cls}: {count} images ({percentage:.2f}%)")
         print(f"  Total: {total_images} images")
 
-def main(target_metric, num_epochs, patience, data_dir):
+def print_confusion_matrix(y_true, y_pred, class_names):
+    cm = confusion_matrix(y_true, y_pred)
+    print("\nConfusion Matrix:")
+    print("            " + " ".join(f"{name:>10}" for name in class_names))
+    for i, row in enumerate(cm):
+        print(f"{class_names[i]:>12}" + " ".join(f"{cell:>10}" for cell in row))
+
+def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_level):
     print(f"Training with target metric: {target_metric}, epochs: {num_epochs}, patience: {patience}")
     print(f"Using dataset directory: {data_dir}")
+    print(f"Bootstrap iterations: {n_bootstrap}, Confidence level: {confidence_level}")
 
     # Load Data
     image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
@@ -222,21 +278,22 @@ def main(target_metric, num_epochs, patience, data_dir):
                 epoch_acc = running_corrects.float() / dataset_sizes[phase]
             
                 # Calculate additional metrics
-                metrics = calculate_metrics(
-                    np.array(all_labels), np.array(all_preds), np.array(all_scores)
-                )
+                metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores), n_bootstrap=n_bootstrap, confidence_level=confidence_level)
 
-                print(f'{phase} Loss: {format_metric(epoch_loss)} ' + 
-                      ' '.join(f'{k}: {format_metric(v)}' for k, v in metrics.items()))
+                print(f'{phase} Loss: {format_metric((epoch_loss,))} ' + ' '.join(f'{k}: {format_metric(v)}' for k, v in metrics.items()))
                 
+                # Update the TensorBoard logging:
                 writer.add_scalar(f'{phase} loss', epoch_loss, epoch)
                 for k, v in metrics.items():
-                    writer.add_scalar(f'{phase} {k}', v, epoch)
+                    writer.add_scalar(f'{phase} {k}', v[0], epoch)
+                    writer.add_scalar(f'{phase} {k}_ci_lower', v[1], epoch)
+                    writer.add_scalar(f'{phase} {k}_ci_upper', v[2], epoch)
+                    writer.add_scalar(f'{phase} {k}_p_value', v[3], epoch)
             
                 if phase == 'val':
                     scheduler.step(epoch_loss)
-                    if metrics[target_metric] > best_metric_value:
-                        best_metric_value = metrics[target_metric]
+                    if metrics[target_metric][0] > best_metric_value:
+                        best_metric_value = metrics[target_metric][0]
                         best_model_wts = model.state_dict()
                         no_improve_epochs = 0
                     else:
@@ -258,6 +315,33 @@ def main(target_metric, num_epochs, patience, data_dir):
     # Train the model
     model = train_model(model, criterion, optimizer, scheduler, num_epochs=num_epochs, patience=patience)
 
+    # Evaluate the model on the validation set
+    model.eval()
+    all_labels = []
+    all_preds = []
+    all_scores = []
+
+    with torch.no_grad():
+        for inputs, labels in dataloaders['val']:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            
+            all_labels.extend(labels.cpu().numpy())
+            all_preds.extend(preds.cpu().numpy())
+            all_scores.extend(outputs.cpu().numpy())
+
+    # Calculate final metrics
+    final_metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores))
+
+    print("\nFinal Metrics:")
+    for k, v in final_metrics.items():
+        print(f"{k}: {format_metric(v)}")
+
+    # Print confusion matrix
+    print_confusion_matrix(all_labels, all_preds, class_names)
+
     # Save the trained model
     torch.save(model.state_dict(), 'resnet_model.pth')
 
@@ -275,5 +359,10 @@ if __name__ == '__main__':
                         help='Number of epochs with no improvement after which training will be stopped')
     parser.add_argument('--data_dir', type=str, default='dataset',
                         help='Path to the dataset directory')
+    parser.add_argument('--n_bootstrap', type=int, default=1000,
+                        help='Number of bootstrap iterations for confidence intervals')
+    parser.add_argument('--confidence_level', type=float, default=0.95,
+                        help='Confidence level for the confidence intervals')
     args = parser.parse_args()
-    main(args.metric, args.epochs, args.patience, args.data_dir)
+    
+    main(args.metric, args.epochs, args.patience, args.data_dir, args.n_bootstrap, args.confidence_level)
