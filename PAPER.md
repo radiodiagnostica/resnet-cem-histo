@@ -84,7 +84,7 @@ The model with the highest validation accuracy across all epochs was selected as
 
 ### Implementation Details
 
-The entire pipeline, including data loading, model definition, training, and evaluation, was implemented in Python using PyTorch and scikit-learn libraries. The code was designed to be run from the command line, allowing for specification of the target metric for optimization, number of epochs, patience for early stopping (although not implemented in the final version), and the data directory.
+The entire pipeline, including data loading, model definition, training, and evaluation, was implemented in Python using PyTorch and scikit-learn libraries. The code was designed to be run from the command line, allowing for specification of the target metric for optimization, number of epochs, patience for early stopping, and the data directory.
 
 ## Results
 
@@ -111,6 +111,11 @@ The best-performing model, as determined by validation accuracy, achieved the fo
 - Area Under the ROC Curve (AUC-ROC): 0.8956
 
 ### Performance Across Different Metrics
+
+<figure>
+  <img src="sample-run2.png" alt="my alt text"/>
+  <figcaption>Key metrics evolution across 50 training epochs.</figcaption>
+</figure>
 
 #### Precision and Recall
 The model demonstrated a good balance between precision and recall. In the final epoch, the validation set precision was 90.65%, and recall was 91.21%, indicating a balanced ability to identify both positive and negative cases.

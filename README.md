@@ -12,7 +12,7 @@
 | Balanced Accuracy | 0.7003 | 0.7020 |
 | AUC-ROC | 0.9092 | 0.9008 |
 
-![Sample Run Results](sample-run.png)
+![Sample Run Results](sample-run2.png)
 
 ## Project Structure
 
