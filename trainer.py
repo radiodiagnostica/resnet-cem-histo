@@ -208,37 +208,49 @@ def create_model(num_classes):
     )
     return model
 
-def format_metric(metric_tuple):
-    if len(metric_tuple) == 4:
-        value, ci_lower, ci_upper, p_value = metric_tuple
-    elif len(metric_tuple) == 1:
-        value = metric_tuple[0]
-        ci_lower, ci_upper, p_value = None, None, None
-    else:
-        raise ValueError(f"Unexpected metric tuple length: {len(metric_tuple)}")
+from tabulate import tabulate
 
-    def is_nan(x):
-        try:
-            return np.isnan(x)
-        except TypeError:
-            return False
+def format_metrics(metrics):
+    table_rows = []
+    for metric_name, metric_value in metrics.items():
+        if len(metric_value) == 4:
+            value, ci_lower, ci_upper, p_value = metric_value
+        elif len(metric_value) == 1:
+            value = metric_value[0]
+            ci_lower, ci_upper, p_value = None, None, None
+        else:
+            raise ValueError(f"Unexpected metric tuple length: {len(metric_value)}")
 
-    if isinstance(value, torch.Tensor):
-        value = value.cpu().item()
-    
-    value_str = f"{value:.4f}" if not is_nan(value) else "N/A"
-    
-    if ci_lower is not None and ci_upper is not None:
-        ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not (is_nan(ci_lower) or is_nan(ci_upper)) else "N/A"
-    else:
-        ci_str = "N/A"
-    
-    if p_value is not None:
-        p_str = f"{p_value:.4f}" if not is_nan(p_value) else "N/A"
-    else:
-        p_str = "N/A"
-    
-    return f"{value_str} CI: {ci_str} p: {p_str}"
+        def is_nan(x):
+            try:
+                return np.isnan(x)
+            except TypeError:
+                return False
+
+        if isinstance(value, torch.Tensor):
+            value = value.cpu().item()
+        
+        value_str = f"{value:.4f}" if not is_nan(value) else "N/A"
+        
+        if ci_lower is not None and ci_upper is not None:
+            ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not (is_nan(ci_lower) or is_nan(ci_upper)) else "N/A"
+        else:
+            ci_str = "N/A"
+        
+        if p_value is not None:
+            p_str = f"{p_value:.8f}" if not is_nan(p_value) else "N/A"
+        else:
+            p_str = "N/A"
+        
+        value = f"{value_str} {ci_str}; {p_str}"
+        table_rows.append([metric_name, value]) 
+
+    # Define the headers
+    headers = ["Metric", "Value (CI95; P)"]
+
+    # Print the table
+    print("Metrics:")
+    print(tabulate(table_rows, headers=headers, tablefmt="pipe"))
 
 def analyze_dataset(image_datasets):
     for phase in ['train', 'val']:
@@ -338,7 +350,9 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
                 # Calculate additional metrics
                 metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores), n_bootstrap=n_bootstrap, confidence_level=confidence_level)
 
-                print(f'{phase} Loss: {format_metric((epoch_loss,))} ' + ' '.join(f'{k}: {format_metric(v)}' for k, v in metrics.items()))
+                print(f'\n{phase} Loss: {epoch_loss:.4f}')
+
+                format_metrics(metrics)
                 
                 # Update the TensorBoard logging:
                 writer.add_scalar(f'{phase} loss', epoch_loss, epoch)
@@ -394,8 +408,7 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
     final_metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores))
 
     print("\nFinal Metrics:")
-    for k, v in final_metrics.items():
-        print(f"{k}: {format_metric(v)}")
+    format_metrics(final_metrics)
 
     # Print confusion matrix
     print_confusion_matrix(all_labels, all_preds, class_names)
