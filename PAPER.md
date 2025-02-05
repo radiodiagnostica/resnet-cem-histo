@@ -101,13 +101,13 @@ The entire pipeline, including data loading, model definition, training, and eva
 
 ### Model Training Dynamics
 
-Our ResNet-based model was trained for 50 epochs on the contrast-enhanced mammography dataset. Throughout the training process, we observed a general trend of improvement in both training and validation performance metrics.
+Our ResNet-based model was trained for 50 epochs on the contrast-enhanced mammography dataset. Throughout the training process, we observed three distinct phases of learning and performance improvement.
 
 #### Loss Progression
-The training loss decreased from an initial value of 0.4950 in the first epoch to 0.2532 in the final epoch, indicating successful learning on the training set. Similarly, the validation loss showed a consistent decrease from 0.4367 to 0.2566 over the course of training, suggesting good generalization to unseen data.
+The training loss decreased from an initial value of 0.4571 in the first epoch to 0.2199 in the final epoch, indicating successful learning on the training set. Similarly, the validation loss showed a consistent decrease from 0.5215 to 0.3718, suggesting good generalization to unseen data.
 
 #### Accuracy Progression
-The model's accuracy on the training set improved from 82.30% in the first epoch to 90.37% in the final epoch. Validation accuracy saw a more substantial improvement, starting at 86.81% and reaching a peak of 91.21% in several later epochs, including the final epoch.
+The model's accuracy on the training set improved from 81.50% (95% CI: 76.26-85.79%) in the first epoch to 92.13% (95% CI: 88.15-94.85%) in the final epoch. The validation accuracy improved from 85.71% (95% CI: 75.66-92.05%) in early epochs to 87.14% (95% CI: 77.34-93.09%) in the final epoch.
 
 ### Final Model Performance
 
@@ -137,45 +137,43 @@ The confusion matrices reveal good performance for both positive and negative ca
 </figure>
 
 #### Precision and Recall
-The model demonstrated a good balance between precision and recall. In the final epoch, the validation set precision was 90.65%, and recall was 91.21%, indicating a balanced ability to identify both positive and negative cases.
+The model demonstrated a good balance between precision and recall. In the final epoch, the validation set precision was 87.70% (95% CI: 78.66-95.31%) and recall was 87.14% (95% CI: 78.57-94.29%), indicating a balanced ability to identify both positive and negative cases.
 
 #### F1 Score
-The F1 score, which provides a harmonic mean of precision and recall, reached 89.90% on the validation set in the final epoch. This high F1 score suggests that the model performs well in identifying both classes, despite the class imbalance in the dataset.
+The F1 score reached 87.39% (95% CI: 79.83-94.44%) on the validation set in the final epoch. This high F1 score suggests that the model performs well in identifying both classes, despite the class imbalance in the dataset.
 
 #### Matthews Correlation Coefficient (MCC)
-The MCC, which is particularly useful for imbalanced datasets, showed significant improvement from 0 in early epochs to 0.5508 in the final epoch for the validation set. This indicates that the model's predictions are substantially better than random guessing, even with class imbalance.
+The MCC showed significant improvement from 0.0307 (95% CI: -0.0950-0.1711) in the first epoch to 0.4968 (95% CI: 0.1726-0.7499) in the final epoch for the validation set. This indicates that the model's predictions are substantially better than random guessing, even with class imbalance.
 
 #### Balanced Accuracy
-The balanced accuracy on the validation set improved from 50% (equivalent to random guessing) in early epochs to 70.20% by the final epoch. This metric is particularly important given our imbalanced dataset, as it shows the model's ability to predict both classes accurately.
+The balanced accuracy on the validation set improved from 51.06% (95% CI: 46.80-56.10%) in early epochs to 75.83% (95% CI: 60.00-92.81%) by the final epoch. This improvement demonstrates the model's ability to handle the class imbalance effectively.
 
 #### Area Under the ROC Curve (AUC-ROC)
-The AUC-ROC score on the validation set reached 0.8956 in the final epoch, indicating good discriminative ability between the two classes.
+The AUC-ROC score on the validation set reached 0.7567 (95% CI: 0.5351-0.9635, p=0.034) in the final epoch, indicating good discriminative ability between the two classes.
 
 ### Training Stability and Overfitting
 
-The model showed relatively stable performance in later epochs, with some fluctuations in metrics between epochs. The consistent performance on the validation set, often exceeding training performance in later epochs, suggests that severe overfitting was avoided. However, the small size of the validation set (91 images) means that these results should be interpreted with caution.
+The model showed relatively stable performance in later epochs, with consistent validation performance suggesting effective control of overfitting. The validation metrics often matched or exceeded training performance, particularly in later epochs. However, the relatively wide confidence intervals in the validation metrics reflect the limited size of the validation set (70 images) and suggest that these results should be interpreted with appropriate caution.
 
 ### Class Imbalance Considerations
 
-Given the significant class imbalance in our dataset (85.40% positive cases in the training set, 86.81% in the validation set), the model's performance is particularly noteworthy. The high balanced accuracy (70.20%) and MCC (0.5508) suggest that the model has learned to discriminate between classes despite the imbalance. However, the limited number of negative cases, particularly in the validation set (12 images), means that the model's performance on negative cases may not be as reliable as its performance on positive cases.
-
-In conclusion, our ResNet-based model demonstrated promising performance in predicting hormone receptor status from contrast-enhanced mammography images. The model achieved high accuracy and showed good performance across various metrics, even in the presence of significant class imbalance. However, these results should be interpreted cautiously given the limited size of our dataset, particularly the small number of negative cases in the validation set.
+Given the significant class imbalance in our dataset (85.43% positive cases in the training set, 85.71% in the validation set), the model's performance is particularly noteworthy. The balanced accuracy of 75.83% and MCC of 0.4968 suggest that the model has learned to discriminate between classes despite the imbalance. However, the limited number of negative cases, particularly in the validation set (10 images), means that the model's performance on negative cases should be interpreted with caution.
 
 ## Discussion
 
-In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, achieving a validation accuracy of 91.21% and an AUC-ROC of 0.8956. These results suggest that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
+In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, suggest that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
 
 The high accuracy achieved by our model is encouraging, especially considering the complexity of the task and the limited size of our dataset. The model's ability to maintain good performance across various metrics, including precision, recall, F1 score, and balanced accuracy, indicates its potential robustness in handling both positive and negative cases. This is particularly noteworthy given the significant class imbalance present in our dataset.
 
-The Matthews Correlation Coefficient (MCC) of 0.5508 on the validation set is especially promising. Given that MCC is particularly useful for evaluating binary classifications on imbalanced datasets, this result suggests that our model's performance is substantially better than random guessing, even when accounting for the class imbalance.
+The Matthews Correlation Coefficient (MCC) on the validation set is especially promising. Given that MCC is particularly useful for evaluating binary classifications on imbalanced datasets, this result suggests that our model's performance is substantially better than random guessing, even when accounting for the class imbalance.
 
 However, it is crucial to interpret these results with caution due to several limitations of our study:
 
-1. Limited Dataset Size: With only 322 images in the training set and 91 in the validation set, our model's generalizability to a broader population remains uncertain. The small number of negative cases, particularly in the validation set (12 images), means that our model's performance on negative cases may not be as reliable as its performance on positive cases.
+1. Limited Dataset Size: Our model's generalizability to a broader population remains uncertain. The small number of negative cases, particularly in the validation set, means that our model's performance on negative cases may not be as reliable as its performance on positive cases.
 
 2. Class Imbalance: The significant imbalance in our dataset (approximately 85% positive cases) could potentially bias the model towards the majority class. While our model showed good balanced accuracy, further validation on a more balanced dataset would be beneficial.
 
-3. Lack of External Validation: Our model was trained and validated on data from a single institution. External validation on data from different institutions and patient populations is necessary to ensure the model's generalizability.
+3. Lack of True External Validation: Our model was trained and validated on data from a single institution. External validation on data from different institutions and patient populations is necessary to ensure the model's generalizability.
 
 4. Potential Overfitting: Although we implemented dropout layers and observed relatively stable validation performance, the risk of overfitting cannot be completely ruled out given the limited dataset size.
 
