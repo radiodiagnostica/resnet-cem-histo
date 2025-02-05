@@ -18,10 +18,8 @@ import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
 from scipy import stats
-from scipy.stats import chi2_contingency
 from scipy.stats import fisher_exact
 from sklearn.metrics import confusion_matrix
-from sklearn.utils import resample
 
 # Check if MPS is available
 if torch.backends.mps.is_available():
