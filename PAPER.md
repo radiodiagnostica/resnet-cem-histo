@@ -38,6 +38,36 @@ It is important to note that while our results show promise, they should be inte
 
 ## Materials and Methods
 
+### Ethics and Study Population
+
+This study was approved by the Ethics Committee (No. 118/20) and conducted at the Radiodiagnostic Department of the Ospedale Maggiore della Carità in Novara and the University of Eastern Piedmont from May 1st, 2021, to May 1st, 2022. Written informed consent was obtained from all participants. Seventy women with biopsy-confirmed breast cancer were consecutively enrolled.
+
+Inclusion criteria were:
+- Confirmed invasive breast cancer (BIRADS-6 according to ACR BI-RADS® 2013 edition)
+- Tumor stage T1-2 and grade G1/2/3 (Elston-Ellis system)
+- Age ≥30 years
+- No history of adverse reactions to contrast agents
+- Normal renal function within the previous 3 months
+
+Exclusion criteria were:
+- Breast implants
+- Pregnancy
+- Age <30 years
+- History of severe adverse reactions to contrast agents
+- Impaired renal function
+
+### Image Acquisition
+
+All patients underwent both CEM and MRI examinations within a 10-day interval for preoperative locoregional staging. The order of examinations was not predetermined. Any suspicious lesions identified by either modality underwent second-look ultrasound followed by US-guided biopsy when indicated.
+
+### CEM Protocol
+
+CEM examinations were performed using a Hologic Selenia Dimension digital mammography system. A single-dose of low-osmolarity iodinated contrast agent (Iomeron 350) was administered through a forearm venous access at 1.5 mL/kg body weight (maximum 110 mL), followed by a 20-mL saline flush. Contrast administration was performed with the patient seated, using an automatic injector (Bracco Injeneering EmpowerCTA®) at a rate of 2-3 mL/s.
+
+Dual-energy tomosynthesis images of the affected breast were acquired in craniocaudal and mediolateral oblique projections beginning 1 minute post-contrast administration. Late 2D acquisitions in the same projections were obtained starting at 7 minutes post-contrast to minimize radiation exposure.
+
+Image interpretation was performed independently by two experienced breast radiologists blinded to the results of the other imaging modality. Discrepancies were resolved by consensus following second-look ultrasound and biopsy results when available.
+
 ### Dataset
 
 #### Region of Interest Selection
