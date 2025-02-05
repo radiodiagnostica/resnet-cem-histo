@@ -40,7 +40,7 @@ It is important to note that while our results show promise, they should be inte
 
 ### Ethics and Study Population
 
-This study was approved by the Ethics Committee (No. 118/20) and conducted at the Radiodiagnostic Department of the Ospedale Maggiore della Carità in Novara and the University of Eastern Piedmont from May 1st, 2021, to May 1st, 2022. Written informed consent was obtained from all participants. Seventy women with biopsy-confirmed breast cancer were consecutively enrolled.
+This study was approved by the Ethics Committee and conducted at the Radiodiagnostic Department of the Ospedale Maggiore della Carità in Novara and the University of Eastern Piedmont. Written informed consent was obtained from all participants. Seventy women with biopsy-confirmed breast cancer were enrolled.
 
 Inclusion criteria were:
 - Confirmed invasive breast cancer (BIRADS-6 according to ACR BI-RADS® 2013 edition)
