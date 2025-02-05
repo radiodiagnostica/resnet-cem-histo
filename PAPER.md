@@ -40,10 +40,21 @@ It is important to note that while our results show promise, they should be inte
 
 ### Dataset
 
-#### Dataset Composition
-Our dataset consisted of contrast-enhanced mammography images from breast cancer patients. The dataset was split into training (n = 322 images) and validation (n = 91 images) sets. The distribution of hormone receptor status was as follows:
-- Training set: 275 (85.40%) positive, 47 (14.60%) negative
-- Validation set: 79 (86.81%) positive, 12 (13.19%) negative
+#### Region of Interest Selection
+Rectangular regions of interest (ROIs) containing the tumor and surrounding breast tissue were manually delineated by experienced radiologists from the contrast-enhanced mammography images. These ROIs, rather than whole mammography images, were used as input to the deep learning model to focus the analysis on the relevant tissue areas.
+
+#### Dataset Split
+The dataset was divided into three distinct sets:
+- Training set (n = 254): 217 positive (85.43%) and 37 negative (14.57%) cases
+- Validation set (n = 70): 60 positive (85.71%) and 10 negative (14.29%) cases
+- External validation set (n = 79): 68 positive (86.08%) and 11 negative (13.92%) cases
+
+#### Statistical Analysis
+Bootstrap analysis with 1000 iterations was performed to calculate 95% confidence intervals for all metrics. P-values were calculated using appropriate statistical tests for each metric:
+- Binomial test for accuracy
+- Fisher's exact test for classification metrics
+- Fisher's z-transformation for Matthews Correlation Coefficient
+- Bootstrap-based tests for balanced accuracy and AUC-ROC
 
 ### Data Preprocessing
 
@@ -100,15 +111,23 @@ The model's accuracy on the training set improved from 82.30% in the first epoch
 
 ### Final Model Performance
 
-The best-performing model, as determined by validation accuracy, achieved the following metrics on the validation set:
+The model achieved strong performance across all evaluation sets. On the training set, the model achieved an accuracy of 0.9213 (95% CI: 0.8815-0.9485, p<0.00001) and an AUC-ROC of 0.9048 (95% CI: 0.8338-0.9604, p<0.00001).
 
-- Accuracy: 91.21%
-- Precision: 90.65%
-- Recall: 91.21%
-- F1 Score: 89.90%
-- Matthews Correlation Coefficient (MCC): 0.5508
-- Balanced Accuracy: 70.20%
-- Area Under the ROC Curve (AUC-ROC): 0.8956
+On the validation set, the model maintained robust performance with:
+- Accuracy: 0.8714 (95% CI: 0.7734-0.9309, p<0.00001)
+- Precision: 0.8770 (95% CI: 0.7811-0.9560, p=0.00056)
+- Recall: 0.8714 (95% CI: 0.7857-0.9429, p=0.00056)
+- F1 Score: 0.8739 (95% CI: 0.7926-0.9429, p=0.00056)
+- Matthews Correlation Coefficient: 0.4968 (95% CI: 0.1532-0.7575, p<0.00001)
+- Balanced Accuracy: 0.7583 (95% CI: 0.5793-0.9133, p=0.01)
+- AUC-ROC: 0.7583 (95% CI: 0.5182-0.9633, p=0.026)
+
+Importantly, the model's performance was validated on an external validation set, where it achieved:
+- Accuracy: 0.8987 (95% CI: 0.8127-0.9478, p<0.00001)
+- AUC-ROC: 0.8382 (95% CI: 0.6971-0.9464, p<0.00001)
+- Matthews Correlation Coefficient: 0.5179 (95% CI: 0.1516-0.7996, p<0.00001)
+
+The confusion matrices reveal good performance for both positive and negative cases, though with slightly better performance for positive cases, reflecting the class distribution in the training data.
 
 ### Performance Across Different Metrics
 
