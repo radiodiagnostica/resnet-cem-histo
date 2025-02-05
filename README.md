@@ -22,14 +22,6 @@ This project contains two main scripts:
 
 ## Prerequisites
 
-- Python 3.7+
-- PyTorch
-- torchvision
-- Pillow
-- matplotlib
-- tensorboard
-- scikit-learn
-
 You can install the required packages using:
 
 ```
