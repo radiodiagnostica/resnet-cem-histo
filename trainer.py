@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -272,6 +273,72 @@ def print_confusion_matrix(y_true, y_pred, class_names):
     for i, row in enumerate(cm):
         print(f"{class_names[i]:>12}" + " ".join(f"{cell:>10}" for cell in row))
 
+def generate_activation_maps(model, image_path, class_idx, transform):
+    from pytorch_grad_cam import GradCAM
+    from pytorch_grad_cam.utils.image import show_cam_on_image
+    from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+    import numpy as np
+
+    # Load and preprocess image
+    img = Image.open(image_path).convert('RGB')
+    input_tensor = transform(img).unsqueeze(0).to(device)
+    
+    # Initialize GradCAM
+    target_layers = [model.layer4[-1]]  # Last layer of ResNet
+
+    # Ensure model is in eval mode but with gradients enabled
+    model.eval()
+    
+    # Create a wrapper class to handle MPS/CUDA/CPU devices
+    class ModelWrapper(torch.nn.Module):
+        def __init__(self, model):
+            super(ModelWrapper, self).__init__()
+            self.model = model
+            
+        def forward(self, x):
+            return self.model(x)
+
+        def __call__(self, x):
+            return self.forward(x)
+
+    wrapped_model = ModelWrapper(model)
+    
+    # Initialize GradCAM with the wrapped model
+    cam = GradCAM(model=wrapped_model, target_layers=target_layers)
+    
+    # Define target category
+    targets = [ClassifierOutputTarget(class_idx)]
+    
+    # Generate activation map
+    try:
+        # Ensure input tensor requires grad
+        input_tensor.requires_grad = True
+        
+        # Generate CAM
+        grayscale_cam = cam(input_tensor=input_tensor, targets=targets)
+        grayscale_cam = grayscale_cam[0, :]
+        
+        # Convert PIL Image to numpy array
+        rgb_img = np.array(img)
+        rgb_img = cv2.resize(rgb_img, (224, 224))
+        rgb_img = rgb_img / 255.0
+        
+        # Ensure rgb_img is in the correct format
+        if rgb_img.max() > 1:
+            rgb_img = rgb_img / 255.0
+        
+        # Overlay activation map on original image
+        visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+        
+        return visualization
+    
+    except Exception as e:
+        print(f"Error generating activation map: {str(e)}")
+        # Return the original image if CAM generation fails
+        rgb_img = np.array(img)
+        rgb_img = cv2.resize(rgb_img, (224, 224))
+        return rgb_img
+
 def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_level):
     print(f"Training with target metric: {target_metric}, epochs: {num_epochs}, patience: {patience}")
     print(f"Using dataset directory: {data_dir}")
@@ -280,9 +347,17 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
     # Load Data
     image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
                       for x in ['train', 'val']}
+    
+    # Check for external validation set
+    external_val_dir = os.path.join(data_dir, 'external_val')
+    has_external_val = os.path.exists(external_val_dir)
+    if has_external_val:
+        image_datasets['external_val'] = CustomDataset(external_val_dir, data_transforms['val'])
+        print("External validation set found!")
+
     dataloaders = {x: DataLoader(image_datasets[x], batch_size=32, shuffle=True, num_workers=0)
-                   for x in ['train', 'val']}
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+                   for x in image_datasets.keys()}
+    dataset_sizes = {x: len(image_datasets[x]) for x in image_datasets.keys()}
     class_names = image_datasets['train'].classes
 
     # Analyze dataset distribution and print it
@@ -387,40 +462,173 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
     # Train the model
     model = train_model(model, criterion, optimizer, scheduler, num_epochs=num_epochs, patience=patience)
 
-    # Evaluate the model on the validation set
+    # Evaluate on validation set
+    def evaluate_model(model, dataloader, phase):
+        model.eval()
+        all_labels = []
+        all_preds = []
+        all_scores = []
+
+        with torch.no_grad():
+            for inputs, labels in dataloader:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                
+                all_labels.extend(labels.cpu().numpy())
+                all_preds.extend(preds.cpu().numpy())
+                all_scores.extend(outputs.cpu().numpy())
+
+        metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores))
+        print(f"\n{phase.capitalize()} Metrics:")
+        format_metrics(metrics)
+        print_confusion_matrix(all_labels, all_preds, class_names)
+        return metrics, all_labels, all_preds
+
+    # Evaluate on validation set
+    val_metrics, val_labels, val_preds = evaluate_model(model, dataloaders['val'], 'validation')
+
+    # Evaluate on external validation set if available
+    if has_external_val:
+        print("\nEvaluating on external validation set:")
+        ext_metrics, ext_labels, ext_preds = evaluate_model(model, dataloaders['external_val'], 'external validation')
+
+    # Generate activation maps
+    print("\nGenerating activation maps...")
+    os.makedirs('activation_maps', exist_ok=True)
+
+    def get_sample_images(dataset, num_samples_per_class=2):
+        class_examples = {cls: [] for cls in range(len(class_names))}
+        for i in range(len(dataset)):
+            img_path, label = dataset.images[i]
+            if len(class_examples[label]) < num_samples_per_class:
+                class_examples[label].append(img_path)
+            if all(len(examples) >= num_samples_per_class for examples in class_examples.values()):
+                break
+        return class_examples
+
+    # Get sample images from validation set
+    val_examples = get_sample_images(image_datasets['val'])
+
+    # Generate and save activation maps
     model.eval()
-    all_labels = []
-    all_preds = []
-    all_scores = []
-
-    with torch.no_grad():
-        for inputs, labels in dataloaders['val']:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
+    for class_idx, img_paths in val_examples.items():
+        for i, img_path in enumerate(img_paths):
+            visualization = generate_activation_maps(model, img_path, class_idx, data_transforms['val'])
             
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(preds.cpu().numpy())
-            all_scores.extend(outputs.cpu().numpy())
-
-    # Calculate final metrics
-    final_metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores))
-
-    print("\nFinal Metrics:")
-    format_metrics(final_metrics)
-
-    # Print confusion matrix
-    print_confusion_matrix(all_labels, all_preds, class_names)
+            # Save the visualization
+            class_name = class_names[class_idx]
+            output_path = f'activation_maps/class_{class_name}_sample_{i+1}_activation.png'
+            cv2.imwrite(output_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
+            print(f"Saved activation map for class {class_name} (sample {i+1})")
 
     # Save the trained model
-    torch.save(model.state_dict(), 'resnet_model.pth')
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'val_metrics': val_metrics,
+        'external_val_metrics': ext_metrics if has_external_val else None,
+        'class_names': class_names
+    }, 'resnet_model.pth')
 
-    print("Training complete. Model saved.")
+    print("\nTraining complete. Model and results saved.")
+
+def evaluate_existing_model(model_path, data_dir, n_bootstrap, confidence_level):
+    print(f"Evaluating model: {model_path}")
+    print(f"Using dataset directory: {data_dir}")
+
+    # Load Data
+    image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
+                    for x in ['val']}
+    
+    # Check for external validation set
+    external_val_dir = os.path.join(data_dir, 'external_val')
+    has_external_val = os.path.exists(external_val_dir)
+    if has_external_val:
+        image_datasets['external_val'] = CustomDataset(external_val_dir, data_transforms['val'])
+        print("External validation set found!")
+
+    dataloaders = {x: DataLoader(image_datasets[x], batch_size=32, shuffle=False, num_workers=0)
+                  for x in image_datasets.keys()}
+    class_names = image_datasets['val'].classes
+
+    # Load the model
+    checkpoint = torch.load(model_path, map_location=device)
+    model = create_model(len(class_names))
+    
+    # Handle different saving formats
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        # New format with metadata
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        # Simple format (just the state dict)
+        model.load_state_dict(checkpoint)
+    
+    model = model.to(device)
+    model.eval()
+
+    def evaluate_dataset(model, dataloader, phase):
+        all_labels = []
+        all_preds = []
+        all_scores = []
+
+        with torch.no_grad():
+            for inputs, labels in dataloader:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                
+                all_labels.extend(labels.cpu().numpy())
+                all_preds.extend(preds.cpu().numpy())
+                all_scores.extend(outputs.cpu().numpy())
+
+        metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), 
+                                 np.array(all_scores), n_bootstrap, confidence_level)
+        print(f"\n{phase.capitalize()} Metrics:")
+        format_metrics(metrics)
+        print_confusion_matrix(all_labels, all_preds, class_names)
+        return metrics
+
+    # Evaluate on validation set
+    print("\nEvaluating on validation set:")
+    val_metrics = evaluate_dataset(model, dataloaders['val'], 'validation')
+
+    # Evaluate on external validation set if available
+    if has_external_val:
+        print("\nEvaluating on external validation set:")
+        ext_metrics = evaluate_dataset(model, dataloaders['external_val'], 'external validation')
+
+    # Generate activation maps
+    print("\nGenerating activation maps...")
+    os.makedirs('activation_maps', exist_ok=True)
+
+    def get_sample_images(dataset, num_samples_per_class=2):
+        class_examples = {cls: [] for cls in range(len(class_names))}
+        for i in range(len(dataset)):
+            img_path, label = dataset.images[i]
+            if len(class_examples[label]) < num_samples_per_class:
+                class_examples[label].append(img_path)
+            if all(len(examples) >= num_samples_per_class for examples in class_examples.values()):
+                break
+        return class_examples
+
+    # Get sample images and generate activation maps
+    val_examples = get_sample_images(image_datasets['val'])
+    for class_idx, img_paths in val_examples.items():
+        for i, img_path in enumerate(img_paths):
+            visualization = generate_activation_maps(model, img_path, class_idx, data_transforms['val'])
+            class_name = class_names[class_idx]
+            output_path = f'activation_maps/class_{class_name}_sample_{i+1}_activation.png'
+            cv2.imwrite(output_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
+            print(f"Saved activation map for class {class_name} (sample {i+1})")
+
+    print("\nEvaluation complete.")
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
-    parser = argparse.ArgumentParser(description='Train a model with specified parameters')
+    parser = argparse.ArgumentParser(description='Train or evaluate a model with specified parameters')
     parser.add_argument('--metric', type=str, default='accuracy', 
                         choices=['accuracy', 'precision', 'recall', 'f1', 'mcc', 'balanced_acc', 'auc_roc'],
                         help='Metric to optimize during training')
@@ -434,6 +642,14 @@ if __name__ == '__main__':
                         help='Number of bootstrap iterations for confidence intervals')
     parser.add_argument('--confidence_level', type=float, default=0.95,
                         help='Confidence level for the confidence intervals')
+    parser.add_argument('--evaluate', type=str,
+                        help='Path to existing model for evaluation')
     args = parser.parse_args()
-    
-    main(args.metric, args.epochs, args.patience, args.data_dir, args.n_bootstrap, args.confidence_level)
+
+    if args.evaluate:
+        # Run evaluation mode
+        evaluate_existing_model(args.evaluate, args.data_dir, args.n_bootstrap, args.confidence_level)
+    else:
+        # Run training mode
+        main(args.metric, args.epochs, args.patience, args.data_dir, args.n_bootstrap, args.confidence_level)
+
