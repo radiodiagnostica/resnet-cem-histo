@@ -254,7 +254,12 @@ def format_metrics(metrics):
     print(tabulate(table_rows, headers=headers, tablefmt="pipe"))
 
 def analyze_dataset(image_datasets):
-    for phase in ['train', 'val']:
+    phases = ['train', 'val']
+    
+    if 'external_val' in image_datasets:
+        phases.append('external_val')
+    
+    for phase in phases:
         print(f"\n{phase.capitalize()} Dataset Distribution:")
         class_counts = {cls: 0 for cls in image_datasets[phase].classes}
         for _, label in image_datasets[phase].images:
