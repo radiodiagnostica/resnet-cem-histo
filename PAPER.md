@@ -131,11 +131,6 @@ The confusion matrices reveal good performance for both positive and negative ca
 
 ### Performance Across Different Metrics
 
-<figure>
-  <img src="sample-run2.png" alt="my alt text"/>
-  <figcaption>Key metrics evolution across 50 training epochs.</figcaption>
-</figure>
-
 #### Precision and Recall
 The model demonstrated a good balance between precision and recall. In the final epoch, the validation set precision was 87.70% (95% CI: 78.66-95.31%) and recall was 87.14% (95% CI: 78.57-94.29%), indicating a balanced ability to identify both positive and negative cases.
 
