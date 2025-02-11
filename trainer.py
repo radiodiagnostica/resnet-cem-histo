@@ -501,7 +501,7 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
     print("\nGenerating activation maps...")
     os.makedirs('activation_maps', exist_ok=True)
 
-    def get_sample_images(dataset, num_samples_per_class=2):
+    def get_sample_images(dataset, num_samples_per_class=200):
         class_examples = {cls: [] for cls in range(len(class_names))}
         for i in range(len(dataset)):
             img_path, label = dataset.images[i]
@@ -607,7 +607,7 @@ def evaluate_existing_model(model_path, data_dir, n_bootstrap, confidence_level)
     print("\nGenerating activation maps...")
     os.makedirs('activation_maps', exist_ok=True)
 
-    def get_sample_images(dataset, num_samples_per_class=2):
+    def get_sample_images(dataset, num_samples_per_class=200):
         class_examples = {cls: [] for cls in range(len(class_names))}
         for i in range(len(dataset)):
             img_path, label = dataset.images[i]
