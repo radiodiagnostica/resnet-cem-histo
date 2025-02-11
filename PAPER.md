@@ -38,6 +38,15 @@ It is important to note that while our results show promise, they should be inte
 
 ## Materials and Methods
 
+The overall workflow of this study is illustrated in Figure 1, which outlines the key steps from data preprocessing and model training to inference and prediction.
+
+<figure>
+    <img src="overview-figure.png" alt="Overview" style="padding: 20px 0; width:100%; margin:auto; display:block;">
+    <figcaption style="text-align:center;">
+        <strong>Figure 1:</strong> Schematic representation of the study pipeline for training and inference using a ResNet-50 neural network to predict hormone receptor positivity in breast cancer from contrast-enhanced mammograms (CEMs). The source dataset consists of raw CEM images, which are preprocessed by cropping to isolate the lesion regions. These cropped images are used as inputs for both model training and inference. The trained model processes the cropped input images during inference to generate predictions (classification) of hormone receptor status.
+    </figcaption>
+</figure>
+
 ### Ethics and Study Population
 
 Data collection was approved by the Ethics Committee and conducted at the Radiodiagnostic Department of the Ospedale Maggiore della Carità in Novara and the University of Eastern Piedmont. Written informed consent was obtained from all participants. Seventy women with biopsy-confirmed breast cancer were enrolled.
