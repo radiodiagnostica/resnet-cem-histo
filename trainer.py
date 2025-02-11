@@ -376,70 +376,76 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
     optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True)
 
-    # Training fuction
     def train_model(model, criterion, optimizer, scheduler, num_epochs=50, patience=10):
         writer = SummaryWriter()
         best_model_wts = model.state_dict()
         best_metric_value = float('-inf')
         no_improve_epochs = 0
-    
+        
+        # List of phases to evaluate
+        phases = ['train', 'val']
+        if 'external_val' in dataloaders:
+            phases.append('external_val')
+        
         for epoch in range(num_epochs):
             print(f'Epoch {epoch+1}/{num_epochs}')
             print('-' * 10)
-        
-            for phase in ['train', 'val']:
+            
+            for phase in phases:
                 if phase == 'train':
                     model.train()
                 else:
                     model.eval()
-            
+                
                 running_loss = 0.0
                 running_corrects = 0
                 all_labels = []
                 all_preds = []
                 all_scores = []
-            
+                
                 for inputs, labels in dataloaders[phase]:
                     inputs = inputs.to(device)
                     labels = labels.to(device)
-                
+                    
                     optimizer.zero_grad()
-                
+                    
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(inputs)
                         _, preds = torch.max(outputs, 1)
                         loss = criterion(outputs, labels)
-                    
+                        
                         if phase == 'train':
                             loss.backward()
                             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                             optimizer.step()
-                
+                    
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
-                
+                    
                     all_labels.extend(labels.cpu().detach().numpy())
                     all_preds.extend(preds.cpu().detach().numpy())
                     all_scores.extend(outputs.cpu().detach().numpy())
-            
+                
                 epoch_loss = running_loss / dataset_sizes[phase]
                 epoch_acc = running_corrects.float() / dataset_sizes[phase]
-            
+                
                 # Calculate additional metrics
-                metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores), n_bootstrap=n_bootstrap, confidence_level=confidence_level)
+                metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), 
+                                        np.array(all_scores), n_bootstrap=n_bootstrap, 
+                                        confidence_level=confidence_level)
 
-                print(f'\n{phase} Loss: {epoch_loss:.4f}')
-
+                print(f'\n{phase.capitalize()} Loss: {epoch_loss:.4f}')
                 format_metrics(metrics)
                 
-                # Update the TensorBoard logging:
+                # Update the TensorBoard logging
                 writer.add_scalar(f'{phase} loss', epoch_loss, epoch)
                 for k, v in metrics.items():
                     writer.add_scalar(f'{phase} {k}', v[0], epoch)
                     writer.add_scalar(f'{phase} {k}_ci_lower', v[1], epoch)
                     writer.add_scalar(f'{phase} {k}_ci_upper', v[2], epoch)
                     writer.add_scalar(f'{phase} {k}_p_value', v[3], epoch)
-            
+                
+                # Model checkpointing based on validation set only
                 if phase == 'val':
                     scheduler.step(epoch_loss)
                     if metrics[target_metric][0] > best_metric_value:
@@ -448,15 +454,18 @@ def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_
                         no_improve_epochs = 0
                     else:
                         no_improve_epochs += 1
-            
+                    
                     if no_improve_epochs >= patience:
-                        # TODO: Previously this would not cause stop
                         print(f"Early stopping triggered after {epoch+1} epochs")
                         model.load_state_dict(best_model_wts)
                         return model
-        
+                
+                # Save external validation metrics at best model point
+                if phase == 'external_val':
+                    writer.add_scalar('best_external_val_metric', metrics[target_metric][0], epoch)
+            
             print()
-    
+        
         print(f'Best val {target_metric}: {best_metric_value:4f}')
         model.load_state_dict(best_model_wts)
         writer.close()
