@@ -41,7 +41,7 @@ It is important to note that while our results show promise, they should be inte
 The overall workflow of this study is illustrated in Figure 1, which outlines the key steps from data preprocessing and model training to inference and prediction.
 
 <figure>
-    <img src="overview-figure.png" alt="Overview" style="padding: 20px 0; width:100%; margin:auto; display:block;">
+    <img src="overview-figure.png" alt="overview-figure" style="padding: 20px 0; width:100%; margin:auto; display:block;">
     <figcaption style="text-align:center;">
         <strong>Figure 1:</strong> Schematic representation of the study pipeline for training and inference using a ResNet-50 neural network to predict hormone receptor positivity in breast cancer from contrast-enhanced mammograms (CEMs). The source dataset consists of raw CEM images, which are preprocessed by cropping to isolate the lesion regions. These cropped images are used as inputs for both model training and inference. The trained model processes the cropped input images during inference to generate predictions (classification) of hormone receptor status.
     </figcaption>
@@ -77,10 +77,28 @@ Dual-energy tomosynthesis images of the affected breast were acquired in cranioc
 
 Image interpretation was performed independently by two experienced breast radiologists blinded to the results of the other imaging modality. Discrepancies were resolved by consensus following second-look ultrasound and biopsy results when available.
 
+Figure 2 illustrates representative raw contrast-enhanced mammography (CEM) images in the left mediolateral oblique (LMLO) projection, highlighting the baseline appearance of the affected breast prior to processing and analysis.
+
+<figure>
+    <img src="raw-cems.png" alt="raw-cems" style="padding: 20px 0; width:100%; margin:auto; display:block;">
+    <figcaption style="text-align:center;">
+        <strong>Figure 2:</strong> Representative Raw Contrast-Enhanced Mammography (CEM) Images in the Left Mediolateral Oblique (LMLO) Projection. This figure displays raw CEM images from three different patients enrolled in the study, showcasing the left mediolateral oblique (LMLO) projection. All images were acquired using a Hologic Selenia Dimension digital mammography system following the administration of a low-osmolarity iodinated contrast agent (Iomeron 350) at 1.5 mL/kg body weight. Dual-energy tomosynthesis images were obtained beginning 1 minute post-contrast administration, with late 2D acquisitions performed starting at 7 minutes post-contrast. These images illustrate the baseline appearance of the affected breast prior to any processing or analysis. Patients included in this study had biopsy-confirmed invasive breast cancer (BIRADS-6), tumor stages T1-2, and were aged ≥30 years with normal renal function. Written informed consent was obtained from all participants.
+    </figcaption>
+</figure>
+
 ### Dataset
 
 #### Region of Interest Selection
 Rectangular regions of interest (ROIs) containing the tumor and surrounding breast tissue were manually delineated by experienced radiologists from the contrast-enhanced mammography images. These ROIs, rather than whole mammography images, were used as input to the deep learning model to focus the analysis on the relevant tissue areas.
+
+Figure 3 illustrates cropped contrast-enhanced mammography (CEM) images, showcasing the manually delineated regions of interest (ROIs) that contain the tumor and surrounding breast tissue.
+
+<figure>
+    <img src="cropped-cems.png" alt="cropped-cems" style="padding: 20px 0; width:100%; margin:auto; display:block;">
+    <figcaption style="text-align:center;">
+        <strong>Figure 3:</strong> Cropped Contrast-Enhanced Mammography (CEM) Images Highlighting Regions of Interest (ROIs). This figure displays cropped CEM images containing the tumor and surrounding breast tissue, manually delineated by experienced radiologists. These rectangular regions of interest (ROIs) were extracted from the full-field CEM images to focus the analysis on the most relevant tissue areas. The use of ROIs ensures that the deep learning model processes only the critical regions, improving computational efficiency and potentially enhancing diagnostic accuracy. Each ROI corresponds to a different patient and reflects the heterogeneity of lesion appearances in the study cohort.
+    </figcaption>
+</figure>
 
 #### Dataset Split
 The dataset was divided into three distinct sets:
@@ -167,6 +185,15 @@ Importantly, the model's performance was validated on an external validation set
 - Matthews Correlation Coefficient: 0.5179 (95% CI: 0.1516-0.7996, p<0.00001)
 
 The confusion matrices reveal good performance for both positive and negative cases, though with slightly better performance for positive cases, reflecting the class distribution in the training data.
+
+Figure 4 displays activation heatmaps overlaid on cropped contrast-enhanced mammography (CEM) images, revealing the regions of the lesions that contributed most significantly to the ResNet-50 model’s predictions of hormone receptor positivity.
+
+<figure>
+    <img src="activated-cropped-cems.png" alt="activated-cropped-cems" style="padding: 20px 0; width:100%; margin:auto; display:block;">
+    <figcaption style="text-align:center;">
+        <strong>Figure 4:</strong> Activation Heatmaps for Cropped Contrast-Enhanced Mammography (CEM) Images. This figure presents activation heatmaps generated using Grad-CAM (Gradient-weighted Class Activation Mapping) overlaid on cropped CEM images containing the tumor and surrounding breast tissue. The heatmaps highlight the regions of the image that were most influential in the ResNet-50 model’s prediction of hormone receptor positivity. Warmer colors (e.g., red and yellow) indicate areas with higher importance, while cooler colors (e.g., blue) represent less significant regions. These visualizations provide insights into the model’s decision-making process.
+    </figcaption>
+</figure>
 
 ### Performance Across Different Metrics
 
