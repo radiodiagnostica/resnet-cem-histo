@@ -220,7 +220,22 @@ Importantly, the model's performance was validated on an external validation set
 
 The confusion matrices reveal good performance for both positive and negative cases, though with slightly better performance for positive cases, reflecting the class distribution in the training data.
 
+Table 2 summarizes the performance of the ResNet-based model across the training, internal validation, and external validation datasets, providing a detailed breakdown of key metrics, including accuracy, precision, recall, F1 score, Matthews Correlation Coefficient (MCC), balanced accuracy, and AUC-ROC, along with their respective 95% confidence intervals and p-values.
+
 Figure 4 displays activation heatmaps overlaid on cropped contrast-enhanced mammography (CEM) images, revealing the regions of the lesions that contributed most significantly to the ResNet-50 model’s predictions of hormone receptor positivity.
+
+**Table 2**: Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and external validation datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
+
+| **Metric**       | **Training Set [Value (CI95); Rounded P-Value]** | **Validation Set [Value (CI95); Rounded P-Value]** | **External Validation Set [Value (CI95); Rounded P-Value]** |
+|:------------------|:-------------------------------------------------|:---------------------------------------------------|:-------------------------------------------------------------|
+| **Loss**          | 0.2199                                           | 0.3746                                             | -                                                            |
+| **Accuracy**      | 0.9213 (0.8815, 0.9485); <0.00001               | 0.8714 (0.7734, 0.9309); <0.00001                | 0.8987 (0.8127, 0.9478); <0.00001                           |
+| **Precision**     | 0.9170 (0.8794, 0.9502); <0.00001               | 0.8770 (0.7973, 0.9528); 0.00056                 | 0.8885 (0.8072, 0.9616); 0.00037                            |
+| **Recall**        | 0.9213 (0.8898, 0.9528); <0.00001               | 0.8714 (0.7857, 0.9429); 0.00056                 | 0.8987 (0.8351, 0.9620); 0.00037                            |
+| **F1 Score**      | 0.9147 (0.8744, 0.9506); <0.00001               | 0.8739 (0.7939, 0.9429); 0.00056                 | 0.8889 (0.8056, 0.9594); 0.00037                            |
+| **MCC**           | 0.6503 (0.5155, 0.7822); <0.00001               | 0.4968 (0.1564, 0.7517); 0.00001                 | 0.5179 (0.1516, 0.7996); 0.00001                            |
+| **Balanced Acc.** | 0.7746 (0.6904, 0.8575); <0.00001               | 0.7583 (0.5769, 0.9133); 0.006                 | 0.7126 (0.5628, 0.8746); 0.01                            |
+| **AUC-ROC**       | 0.9048 (0.8338, 0.9604); <0.00001               | 0.7583 (0.5040, 0.9598); 0.048                 | 0.8382 (0.6971, 0.9464); <0.00001                           |
 
 <figure>
     <img src="activated-cropped-cems.png" alt="activated-cropped-cems" style="padding: 20px 0; width:100%; margin:auto; display:block;">
