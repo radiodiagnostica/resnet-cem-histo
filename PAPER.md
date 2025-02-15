@@ -108,37 +108,13 @@ The dataset was divided into three distinct sets:
 
 The distribution of hormone receptor status across the training, validation, and external validation datasets is summarized in Table 1.
 
-<table>
-  <caption><strong>Table 1:</strong> Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets.</caption>
-  <thead>
-    <tr>
-      <th scope="col">Dataset</th>
-      <th scope="col">Total Cases (n)</th>
-      <th scope="col">Positive Cases (n, %)</th>
-      <th scope="col">Negative Cases (n, %)</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Training Set</td>
-      <td>254</td>
-      <td>217 (85.43%)</td>
-      <td>37 (14.57%)</td>
-    </tr>
-    <tr>
-      <td>Validation Set</td>
-      <td>70</td>
-      <td>60 (85.71%)</td>
-      <td>10 (14.29%)</td>
-    </tr>
-    <tr>
-      <td>External Validation Set</td>
-      <td>79</td>
-      <td>68 (86.08%)</td>
-      <td>11 (13.92%)</td>
-    </tr>
-  </tbody>
-</table>
+**Table 1:** Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets.
+
+| Dataset                 | Total Cases (n) | Positive Cases (n, %) | Negative Cases (n, %) |
+|-------------------------|-----------------|------------------------|------------------------|
+| Training Set            | 254             | 217 (85.43%)           | 37 (14.57%)            |
+| Validation Set          | 70              | 60 (85.71%)            | 10 (14.29%)            |
+| External Validation Set | 79              | 68 (86.08%)            | 11 (13.92%)            |
 
 #### Statistical Analysis
 Bootstrap analysis with 1000 iterations was performed to calculate 95% confidence intervals for all metrics. P-values were calculated using appropriate statistical tests for each metric:
@@ -224,7 +200,7 @@ Table 2 summarizes the performance of the ResNet-based model across the training
 
 Figure 4 displays activation heatmaps overlaid on cropped contrast-enhanced mammography (CEM) images, revealing the regions of the lesions that contributed most significantly to the ResNet-50 model’s predictions of hormone receptor positivity.
 
-**Table 2**: Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and external validation datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
+**Table 2:** Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and external validation datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
 
 | **Metric**       | **Training Set [Value (CI95); Rounded P-Value]** | **Validation Set [Value (CI95); Rounded P-Value]** | **External Validation Set [Value (CI95); Rounded P-Value]** |
 |:------------------|:-------------------------------------------------|:---------------------------------------------------|:-------------------------------------------------------------|
