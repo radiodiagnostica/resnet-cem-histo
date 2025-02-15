@@ -109,7 +109,7 @@ The dataset was divided into three distinct sets:
 The distribution of hormone receptor status across the training, validation, and external validation datasets is summarized in Table 1.
 
 <table>
-  <caption><strong>Table 1:</strong> Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets used for exploring the potential of deep learning in predicting hormone receptor status.</caption>
+  <caption><strong>Table 1:</strong> Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets.</caption>
   <thead>
     <tr>
       <th scope="col">Dataset</th>
