@@ -106,6 +106,40 @@ The dataset was divided into three distinct sets:
 - Validation set (n = 70): 60 positive (85.71%) and 10 negative (14.29%) cases
 - External validation set (n = 79): 68 positive (86.08%) and 11 negative (13.92%) cases
 
+The distribution of hormone receptor status across the training, validation, and external validation datasets is summarized in Table 1.
+
+<table>
+  <caption><strong>Table 1:</strong> Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets used for exploring the potential of deep learning in predicting hormone receptor status.</caption>
+  <thead>
+    <tr>
+      <th scope="col">Dataset</th>
+      <th scope="col">Total Cases (n)</th>
+      <th scope="col">Positive Cases (n, %)</th>
+      <th scope="col">Negative Cases (n, %)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Training Set</td>
+      <td>254</td>
+      <td>217 (85.43%)</td>
+      <td>37 (14.57%)</td>
+    </tr>
+    <tr>
+      <td>Validation Set</td>
+      <td>70</td>
+      <td>60 (85.71%)</td>
+      <td>10 (14.29%)</td>
+    </tr>
+    <tr>
+      <td>External Validation Set</td>
+      <td>79</td>
+      <td>68 (86.08%)</td>
+      <td>11 (13.92%)</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Statistical Analysis
 Bootstrap analysis with 1000 iterations was performed to calculate 95% confidence intervals for all metrics. P-values were calculated using appropriate statistical tests for each metric:
 - Binomial test for accuracy
