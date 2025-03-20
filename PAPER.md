@@ -289,7 +289,7 @@ Future research directions should focus on addressing these limitations and furt
 
 12. Clinical Integration Studies: Exploring how such a model could be integrated into clinical workflows and decision-making processes, including studies on its impact on clinical outcomes and cost-effectiveness.
 
-In conclusion, while our study presents promising initial results, it represents only a first step towards the potential clinical application of AI in predicting hormone receptor status from contrast-enhanced mammography images. The path from promising research results to clinical implementation is long and complex, requiring extensive validation, careful consideration of ethical implications, and close collaboration between AI researchers, clinicians, and regulatory bodies. 
+In conclusion, while our study presents promising initial results, it represents only a first step towards the potential clinical application of AI in predicting hormone receptor status from contrast-enhanced mammography images. A successful clinical implementation will require extensive validation, careful consideration of ethical implications, and close collaboration between AI researchers, clinicians, and regulatory bodies. 
 
 ## Bibliography
 
