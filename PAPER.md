@@ -28,9 +28,17 @@ The intersection of advanced imaging techniques like CEM and deep learning algor
 
 However, the development and validation of such models face several challenges. These include the need for large, diverse datasets; potential biases in training data; the "black box" nature of deep learning models; and the critical importance of ensuring high accuracy given the impact on treatment decisions [13].
 
-Previous studies have explored the use of machine learning for predicting molecular subtypes of breast cancer from imaging data, including mammography and MRI [14, 15]. While these studies have shown promise, they have often been limited by small sample sizes, lack of external validation, and challenges in interpretability [16].
+Previous studies have explored the use of machine learning for predicting molecular subtypes of breast cancer from imaging data, including mammography and MRI [14, 15]. While these studies have shown promise, they have often been limited by small sample sizes, lack of external validation, and challenges in interpretability [16]. 
 
-Our study aims to contribute to this growing body of research by investigating the potential of a ResNet-based deep learning model to predict hormone receptor status from contrast-enhanced mammography images. We hypothesize that the enhanced visibility of tumor characteristics in CEM, combined with the feature extraction capabilities of deep learning, could provide valuable insights into hormone receptor status.
+For instance, Zeng et al. developed a deep learning model (CBAM ResNet-18) to predict HER2, ER, and PR expressions from standard mammography images without manual segmentation [17]. Their study demonstrated the potential of AI in predicting receptor status, particularly for ER, but was limited by the use of conventional mammography rather than contrast-enhanced images.
+
+Huang et al. focused on using DCE-MRI radiomics to differentiate between luminal and non-luminal molecular subtypes of breast cancer [18]. Their study showed good discrimination ability but was limited to a binary classification of molecular subtypes rather than specific hormone receptor status prediction.
+
+Ming et al. employed transfer learning techniques on multi-scale DCE-MRI images to predict hormone receptor status and PAM50 subtypes [19]. While their approach showed promising results, especially when incorporating peri-tumor regions, it relied on the more complex and time-consuming MRI modality.
+
+Notably, Dominique et al. investigated the use of deep learning analysis on contrast-enhanced mammography to determine histoprognostic factors of malignant breast tumors [20]. Their study showed promising results for predicting estrogen receptor status and triple-negative receptor status, demonstrating the potential of AI applied to contrast-enhanced mammography techniques.
+
+Our study aims to contribute to this growing body of research by investigating the potential of a ResNet-based deep learning model to predict hormone receptor status from contrast-enhanced mammography images. We hypothesize that the enhanced visibility of tumor characteristics in CEM, combined with the feature extraction capabilities of deep learning, could provide valuable insights into hormone receptor status while offering a more accessible and efficient imaging modality compared to MRI.
 
 In this article, we present our methodology for developing and training the model, including data preprocessing, model architecture, and training procedures. We report the model's performance across various metrics and discuss the implications of our findings. Additionally, we critically examine the limitations of our approach and outline directions for future research.
 
@@ -231,11 +239,13 @@ Given the significant class imbalance in our dataset (85.43% positive cases in t
 
 ## Discussion
 
-In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, suggest that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
+In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, suggesting that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
 
-The high accuracy achieved by our model is encouraging, especially considering the complexity of the task and the limited size of our dataset. The model's ability to maintain good performance across various metrics, including precision, recall, F1 score, and balanced accuracy, indicates its potential robustness in handling both positive and negative cases. This is particularly noteworthy given the significant class imbalance present in our dataset.
+The high accuracy achieved by our model is encouraging, especially when compared to previous studies using different imaging modalities. For instance, Zeng et al. achieved AUCs of 0.785 and 0.706 for ER and PR prediction respectively using standard mammography [17], while our model achieved AUCs between 0.76-0.90 across validation tests. This suggests that contrast-enhanced mammography may provide additional valuable information for hormone receptor status prediction.
 
-The Matthews Correlation Coefficient (MCC) on the validation set is especially promising. Given that MCC is particularly useful for evaluating binary classifications on imbalanced datasets, this result suggests that our model's performance is substantially better than random guessing, even when accounting for the class imbalance.
+Our approach offers several advantages over MRI-based methods like those used by Huang et al. and Ming et al. [18, 19]. Contrast-enhanced mammography is generally more accessible, faster, and less expensive than MRI, potentially allowing for wider clinical application. Moreover, our model's performance is competitive with these MRI-based approaches, despite using a simpler imaging modality.
+
+The study by Dominique et al. [20], which also used contrast-enhanced mammography, reported AUCs of 0.83-0.85 for ER status prediction, which is comparable to our results. However, our study extends beyond this by attempting to predict overall hormone receptor status, potentially offering a more comprehensive assessment.
 
 However, it is crucial to interpret these results with caution due to several limitations of our study:
 
@@ -249,6 +259,8 @@ However, it is crucial to interpret these results with caution due to several li
 
 5. Black Box Nature: Like many deep learning models, our ResNet-based model operates as a "black box," making it challenging to understand the specific image features it uses to make predictions. This lack of interpretability could be a barrier to clinical adoption.
 
+6. Pre-operative Biopsy Sampling: Our model was trained using hormone receptor status determined from pre-operative biopsies. This approach may be subject to sampling biases due to tumor heterogeneity. Future studies should consider confirming and training the model using post-operative surgical specimens, which may provide a more accurate representation of the tumor's overall hormone receptor status.
+
 Despite these limitations, our study provides a promising proof-of-concept for the use of deep learning in predicting hormone receptor status from contrast-enhanced mammography images. If further validated, this approach could potentially offer several advantages in clinical practice:
 
 1. Non-invasive Assessment: Predicting hormone receptor status from imaging data could reduce the need for invasive biopsies, particularly in cases where biopsy might be challenging or risky.
@@ -261,7 +273,7 @@ Despite these limitations, our study provides a promising proof-of-concept for t
 
 ## Conclusion and Future Directions
 
-Our study demonstrates the potential of deep learning techniques in predicting hormone receptor status from contrast-enhanced mammography images. While our results are promising, they should be considered preliminary given the limitations of our study.
+Our study demonstrates the potential of deep learning techniques in predicting hormone receptor status from contrast-enhanced mammography images. While our results are promising and competitive with other imaging-based approaches, they should be considered preliminary given the limitations of our study.
 
 Future research directions should focus on addressing these limitations and further validating the approach:
 
@@ -289,7 +301,11 @@ Future research directions should focus on addressing these limitations and furt
 
 12. Clinical Integration Studies: Exploring how such a model could be integrated into clinical workflows and decision-making processes, including studies on its impact on clinical outcomes and cost-effectiveness.
 
-In conclusion, while our study presents promising initial results, it represents only a first step towards the potential clinical application of AI in predicting hormone receptor status from contrast-enhanced mammography images. A successful clinical implementation will require extensive validation, careful consideration of ethical implications, and close collaboration between AI researchers, clinicians, and regulatory bodies. 
+13. Validation with Surgical Specimens: Future studies should aim to train and validate the model using hormone receptor status determined from post-operative surgical specimens. This would help address potential sampling biases associated with pre-operative biopsies and provide a more accurate ground truth for model training and evaluation.
+
+14. Comparative Studies: Conducting studies that directly compare the performance of models based on contrast-enhanced mammography, standard mammography, and MRI within the same patient cohort would provide valuable insights into the relative merits of each approach.
+
+In conclusion, while our study presents promising initial results, it represents only a first step towards the clinical application of AI in predicting hormone receptor status from contrast-enhanced mammography images. Our approach offers advantages in terms of accessibility and efficiency compared to MRI-based methods, while potentially providing more information than standard mammography. However, a successful clinical implementation will require extensive validation, careful consideration of ethical implications, and close collaboration between AI researchers, clinicians, and regulatory bodies.
 
 ## Bibliography
 
@@ -324,3 +340,11 @@ In conclusion, while our study presents promising initial results, it represents
 [15] Li H, Zhu Y, Burnside ES, et al. Quantitative MRI radiomics in the prediction of molecular classifications of breast cancer subtypes in the TCGA/TCIA data set. NPJ Breast Cancer. 2016;2:16012.
 
 [16] Yala A, Lehman C, Schuster T, Portnoi T, Barzilay R. A Deep Learning Mammography-based Model for Improved Breast Cancer Risk Prediction. Radiology. 2019;292(1):60-66.
+
+[17] Zeng S, Chen H, Jing R, Yang W, He L, Zou T, Liu P, Liang B, Shi D, Wu W, Lin Q, Ma Z, Zha J, Zhong Y, Zhang X, Shao G, Gong P. An assessment of breast cancer HER2, ER, and PR expressions based on mammography using deep learning with convolutional neural networks. Sci Rep. 2025 Feb 9;15(1):4826.
+
+[18] Huang T, Fan B, Qiu Y, Zhang R, Wang X, Wang C, Lin H, Yan T, Dong W. Application of DCE-MRI radiomics signature analysis in differentiating molecular subtypes of luminal and non-luminal breast cancer. Front Med (Lausanne). 2023 Apr 25;10:1140514.
+
+[19] Ming W, Li F, Zhu Y, Bai Y, Gu W, Liu Y, Sun X, Liu X, Liu H. Predicting hormone receptors and PAM50 subtypes of breast cancer from multi-scale lesion images of DCE-MRI with transfer learning technique. Comput Biol Med. 2022 Nov;150:106147.
+
+[20] Dominique C, Callonnec F, Berghian A, Defta D, Vera P, Modzelewski R, Decazes P. Deep learning analysis of contrast-enhanced spectral mammography to determine histoprognostic factors of malignant breast tumours. Eur Radiol. 2022 Jul;32(7):4834-4844.
