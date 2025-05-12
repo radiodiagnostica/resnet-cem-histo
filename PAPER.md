@@ -17,6 +17,11 @@ On the independent-test set the model reached accuracy 89.87 % (81.27–94.78), 
 
 **Conclusion** A ResNet-50 model can discriminate HR-positive from HR-negative tumours on CEM with encouraging accuracy and favourable imbalance-aware metrics, despite a heavily skewed class distribution (~85 % HR-positive). Validation in larger multi-centre cohorts is required before clinical adoption.
 
+## Relevance Statement  
+
+Concept Demonstrates that CEM images contain sufficient signal for deep-learning-based prediction of hormone-receptor status.  
+Implementation Reports balanced accuracy and MCC, metrics that remain informative under severe class imbalance, alongside conventional accuracy and AUC-ROC.
+
 ## Introduction
 
 Breast cancer remains one of the most prevalent and challenging malignancies worldwide, with an estimated 2.3 million new cases diagnosed globally in 2020 [1]. The heterogeneity of breast cancer necessitates personalized treatment approaches, with hormone receptor status playing a pivotal role in determining appropriate therapies and predicting patient outcomes [2]. Estrogen receptor (ER) and progesterone receptor (PR) statuses are crucial biomarkers that guide treatment decisions, particularly regarding the use of endocrine therapies [3].
