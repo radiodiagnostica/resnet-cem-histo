@@ -40,121 +40,48 @@ Collectively, these investigations have moved the field forward but share severa
 
 To provide a transparent benchmark that explicitly addresses class imbalance, we evaluate a standard ResNet-50 for HR prediction from CEM in a single-centre proof-of-concept study. Tumour regions are manually cropped to isolate lesion-specific signal while keeping preprocessing minimal. Model performance is reported with conventional metrics (accuracy, AUC-ROC) **and** imbalance-aware measures (balanced accuracy, MCC) to reflect the ≈ 85 % prevalence of HR-positive cases. Although preliminary and single-centre, the work establishes a reproducible reference point for subsequent multi-institution investigations.
 
-## Materials and Methods
+## Materials and Methods  
 
-The overall workflow of this study is illustrated in Figure 1, which outlines the key steps from data preprocessing and model training to inference and prediction.
+### Study design and ethics  
+This retrospective, single-centre feasibility study was approved by the institutional ethics committee. All 70 women analysed had previously provided written consent for anonymised research use of their imaging and pathology data.
 
-![Overview Figure](overview-figure.png)
-**Figure 1:** Schematic representation of the study pipeline for training and inference using a ResNet-50 neural network to predict hormone receptor positivity in breast cancer from contrast-enhanced mammograms (CEMs). The source dataset consists of raw CEM images, which are preprocessed by cropping to isolate the lesion regions. These cropped images are used as inputs for both model training and inference. The trained model processes the cropped input images during inference to generate predictions (classification) of hormone receptor status.
+### Patient cohort  
+Women who underwent contrast-enhanced mammography (CEM) between October 2020 and May 2022 for pre-operative staging of biopsy-proven invasive breast cancer were screened. Departmental policy restricts CEM to patients aged ≥ 30 years, so younger women are absent. All tumours were clinical stage T1–T2 at presentation. Contra-indications to CEM (pregnancy, breast implants, impaired renal function, severe contrast reaction) preclude referral and are therefore not represented.  
 
-### Ethics and Study Population
+Hormone-receptor (HR) status was copied verbatim from each pathology report. A case was labelled HR-positive when either ER or PR was marked “positive” by the institutional pathology service. Because the exact immunohistochemical threshold was not recorded consistently, a degree of uncertainty in the reference standard is acknowledged.
 
-Data collection was approved by the Ethics Committee and conducted at the Radiodiagnostic Department of the Ospedale Maggiore della Carità in Novara and the University of Eastern Piedmont. Written informed consent was obtained from all participants. Seventy women with biopsy-confirmed breast cancer were enrolled.
+### CEM protocol  
+Imaging was performed on a Hologic Selenia Dimension system. After intravenous iodinated contrast (Iomeron 350, 1.5 mL kg⁻¹; maximum 110 mL) at 2–3 mL s⁻¹, dual-energy two-dimensional craniocaudal (CC) and mediolateral-oblique (MLO) views of the affected breast were acquired 1 minute post-injection. This timing reflects vendor default at our centre; many units employ 2 minutes, so protocol heterogeneity is a potential source of variability.  
 
-Inclusion criteria were:
-- Confirmed invasive breast cancer (BIRADS-6 according to ACR BI-RADS® 2013 edition)
-- Tumor stage T1-2 and grade G1/2/3 (Elston-Ellis system)
-- Age ≥30 years
-- No history of adverse reactions to contrast agents
-- Normal renal function within the previous 3 months
+Because the dataset is small, **late low-dose images acquired 7 minutes after contrast injection were also retained and treated as independent inputs.** The impact of mixing early and late phases is unknown and is considered a limitation. Only recombined (subtracted) images of the tumour-bearing breast were analysed; low-energy images and all contralateral views were excluded.
 
-Exclusion criteria were:
-- Breast implants
-- Pregnancy
-- Age <30 years
-- History of severe adverse reactions to contrast agents
-- Impaired renal function
+![Overview Figure](overview-figure.png)  
+**Figure 1.** Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-50 training and inference.
 
-### Image Acquisition
+### Region-of-interest definition and preprocessing  
+Enhancing lesions were localised on the recombined images and **cropped manually** with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately.
 
-All patients underwent both CEM and MRI examinations within a 10-day interval for preoperative locoregional staging. The order of examinations was not predetermined. Any suspicious lesions identified by either modality underwent second-look ultrasound followed by US-guided biopsy when indicated.
+During training, crops were fed to a `RandomResizedCrop(224)` layer, which rescales them to 224 × 224 pixels while allowing modest aspect-ratio changes—potentially distorting tumour geometry, a further limitation. Validation and test images underwent centre cropping to 224 pixels. All images were normalised to the ImageNet mean and standard deviation.
 
-### CEM Protocol
+![raw-cems](raw-cems.png)  
+**Figure 2.** Representative early- and late-phase recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.
 
-CEM examinations were performed using a Hologic Selenia Dimension digital mammography system. A single-dose of low-osmolarity iodinated contrast agent (Iomeron 350) was administered through a forearm venous access at 1.5 mL/kg body weight (maximum 110 mL), followed by a 20-mL saline flush. Contrast administration was performed with the patient seated, using an automatic injector (Bracco Injeneering EmpowerCTA®) at a rate of 2-3 mL/s.
+![cropped-cems](cropped-cems.png)  
+**Figure 3.** Examples of manually cropped regions of interest (ROIs) that were used as model input.
 
-Dual-energy tomosynthesis images of the affected breast were acquired in craniocaudal and mediolateral oblique projections beginning 1 minute post-contrast administration. Late 2D acquisitions in the same projections were obtained starting at 7 minutes post-contrast to minimize radiation exposure.
+### Dataset split  
+From the 70 patients, 403 cropped images (each CC, MLO and late-phase projection counted separately) were derived and randomly assigned to a **training set** (n = 254), a **validation set** (n = 70) and an **independent-test set** (n = 79). Allocation was performed at **image level**; consequently, a single patient may contribute to multiple subsets, raising the possibility of information leakage. HR-positive cases comprised ~85 % of every subset.
 
-Image interpretation was performed independently by two experienced breast radiologists blinded to the results of the other imaging modality. Discrepancies were resolved by consensus following second-look ultrasound and biopsy results when available.
+### Convolutional-network architecture and training  
+A ResNet-50 pretrained on ImageNet served as backbone; all convolutional layers were frozen. The original fully connected layer was replaced by a classifier that applies dropout (rate 0.5), a 2 048 → 512 linear layer, ReLU activation, another dropout layer (rate 0.3) and a final 512 → 2 linear layer to output class logits.  
 
-Figure 2 illustrates representative raw contrast-enhanced mammography (CEM) images in the left mediolateral oblique (LMLO) projection, highlighting the baseline appearance of the affected breast prior to processing and analysis.
+Training used the Adam optimiser with an initial learning rate of 1 × 10⁻⁴ and weight-decay of 1 × 10⁻⁴. A ReduceLROnPlateau scheduler reduced the learning rate by a factor of 0.1 after five epochs without improvement in validation loss. The loss function was standard, unweighted cross-entropy; mini-batch size was 32; and training ran for up to 50 epochs. The network snapshot that achieved the highest **validation accuracy** was retained. Because accuracy may favour the majority class, imbalance-aware metrics are also reported (see §2.7).
 
-![raw-cems](raw-cems.png)
-**Figure 2:** Representative Raw Contrast-Enhanced Mammography (CEM) Images in the Left Mediolateral Oblique (LMLO) Projection. This figure displays raw CEM images from three different patients enrolled in the study, showcasing the left mediolateral oblique (LMLO) projection. All images were acquired using a Hologic Selenia Dimension digital mammography system following the administration of a low-osmolarity iodinated contrast agent (Iomeron 350) at 1.5 mL/kg body weight. Dual-energy tomosynthesis images were obtained beginning 1 minute post-contrast administration, with late 2D acquisitions performed starting at 7 minutes post-contrast. These images illustrate the baseline appearance of the affected breast prior to any processing or analysis. Patients included in this study had biopsy-confirmed invasive breast cancer (BIRADS-6), tumor stages T1-2, and were aged ≥30 years with normal renal function. Written informed consent was obtained from all participants.
+### Performance metrics and statistical analysis  
+Performance on the training, validation and independent-test sets was summarised with: accuracy, precision, recall, F1-score, balanced accuracy, Matthews correlation coefficient (MCC) and the area under the receiver-operating-characteristic curve (AUC-ROC). Ninety-five-percent confidence intervals (95 % CI) were calculated with 1 000-iteration non-parametric bootstrap. No hypothesis tests or p-values are reported, as only a single model was evaluated.
 
-### Dataset
-
-#### Region of Interest Selection
-Rectangular regions of interest (ROIs) containing the tumor and surrounding breast tissue were manually delineated by experienced radiologists from the contrast-enhanced mammography images. These ROIs, rather than whole mammography images, were used as input to the deep learning model to focus the analysis on the relevant tissue areas.
-
-Figure 3 illustrates cropped contrast-enhanced mammography (CEM) images, showcasing the manually delineated regions of interest (ROIs) that contain the tumor and surrounding breast tissue.
-
-![cropped-cems](cropped-cems.png)
-**Figure 3:** Cropped Contrast-Enhanced Mammography (CEM) Images Highlighting Regions of Interest (ROIs). This figure displays cropped CEM images containing the tumor and surrounding breast tissue, manually delineated by experienced radiologists. These rectangular regions of interest (ROIs) were extracted from the full-field CEM images to focus the analysis on the most relevant tissue areas. The use of ROIs ensures that the deep learning model processes only the critical regions, improving computational efficiency and potentially enhancing diagnostic accuracy. Each ROI corresponds to a different patient and reflects the heterogeneity of lesion appearances in the study cohort.
-
-#### Dataset Split
-The dataset was divided into three distinct sets:
-- Training set (n = 254): 217 positive (85.43%) and 37 negative (14.57%) cases
-- Validation set (n = 70): 60 positive (85.71%) and 10 negative (14.29%) cases
-- Independent test set (n = 79): 68 positive (86.08%) and 11 negative (13.92%) cases
-
-The distribution of hormone receptor status across the training, validation, and independent test datasets is summarized in Table 1.
-
-**Table 1:** Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and independent test datasets.
-
-| Dataset                 | Total Cases (n) | Positive Cases (n, %) | Negative Cases (n, %) |
-|-------------------------|-----------------|------------------------|------------------------|
-| Training Set            | 254             | 217 (85.43%)           | 37 (14.57%)            |
-| Validation Set          | 70              | 60 (85.71%)            | 10 (14.29%)            |
-| Independent Test Set    | 79              | 68 (86.08%)            | 11 (13.92%)            |
-
-#### Statistical Analysis
-Bootstrap analysis with 1000 iterations was performed to calculate 95% confidence intervals for all metrics. P-values were calculated using appropriate statistical tests for each metric:
-- Binomial test for accuracy
-- Fisher's exact test for classification metrics
-- Fisher's z-transformation for Matthews Correlation Coefficient
-- Bootstrap-based tests for balanced accuracy and AUC-ROC
-
-### Data Preprocessing
-
-#### Image Preprocessing
-Images were resized to 224x224 pixels to match the input size of the ResNet architecture. We applied data augmentation techniques to the training set, including random resized crops, random horizontal and vertical flips, random rotations (up to 20 degrees), color jitter (brightness, contrast, saturation, and hue), and random affine transformations.
-
-#### Normalization
-Images were normalized using the mean (0.485, 0.456, 0.406) and standard deviation (0.229, 0.224, 0.225) of the ImageNet dataset, as our model used pretrained weights from ImageNet.
-
-### Model Architecture
-
-We utilized a ResNet-50 architecture pretrained on ImageNet as the base model. The final fully connected layer was modified to output two classes (hormone receptor-positive and negative). We added dropout layers (with rates of 0.5 and 0.3) and an additional hidden layer (512 units with ReLU activation) before the final output layer to reduce overfitting.
-
-### Model Training
-
-#### Training Procedure
-The model was trained using PyTorch on the available hardware (MPS or CUDA if available, otherwise CPU). We used the Adam optimizer with an initial learning rate of 0.0001 and weight decay of 1e-4. The learning rate was adjusted using a ReduceLROnPlateau scheduler with a factor of 0.1 and patience of 5 epochs. Training was conducted for 50 epochs with a batch size of 32.
-
-#### Loss Function
-We used cross-entropy loss as our objective function, which is appropriate for binary classification tasks.
-
-### Model Evaluation
-
-#### Performance Metrics
-We evaluated our model using several metrics to provide a comprehensive assessment of its performance:
-- Accuracy
-- Precision
-- Recall
-- F1 score
-- Matthews Correlation Coefficient (MCC)
-- Balanced Accuracy
-- Area Under the Receiver Operating Characteristic Curve (AUC-ROC)
-
-These metrics were calculated for both the training and validation sets at each epoch.
-
-#### Best Model Selection
-The model with the highest validation accuracy across all epochs was selected as the final model.
-
-### Implementation Details
-
-The entire pipeline, including data loading, model definition, training, and evaluation, was implemented in Python using PyTorch and scikit-learn libraries. The code was designed to be run from the command line, allowing for specification of the target metric for optimization, number of epochs, patience for early stopping, and the data directory.
+### Implementation and hardware  
+The pipeline is implemented in Python with PyTorch; full requirements and source code are available on GitHub (link in the Data-availability statement). Experiments ran on an Apple M2 laptop with 8 GB unified memory via the Metal Performance Shaders backend; the script automatically falls back to CUDA GPU or CPU if available.
 
 ## Results
 
