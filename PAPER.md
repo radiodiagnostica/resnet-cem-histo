@@ -17,6 +17,12 @@ On the independent-test set the model reached accuracy 89.87 % (81.27–94.78), 
 
 **Conclusion** A ResNet-50 model can discriminate HR-positive from HR-negative tumours on CEM with encouraging accuracy and favourable imbalance-aware metrics, despite a heavily skewed class distribution (~85 % HR-positive). Validation in larger multi-centre cohorts is required before clinical adoption.
 
+## Key Points  
+
+- ResNet-50 achieved 89.9 % accuracy and an AUC-ROC of 0.84 on an independent-test CEM cohort when predicting hormone-receptor positivity.  
+- Balanced accuracy of 0.71 and MCC of 0.52 indicate reliable discrimination despite an 85 % prevalence of HR-positive cases.  
+- Results support further multi-centre research into CEM-based AI as a non-invasive surrogate for tissue-based HR testing.
+
 ## Relevance Statement  
 
 Concept Demonstrates that CEM images contain sufficient signal for deep-learning-based prediction of hormone-receptor status.  
