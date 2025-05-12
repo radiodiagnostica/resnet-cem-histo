@@ -7,7 +7,7 @@ Work in progress, still to do:
 
 ## Abstract
 
-Breast cancer is a heterogeneous disease, with hormone receptor status playing a crucial role in treatment planning and prognosis. This study explores the potential of deep learning techniques to predict hormone receptor status from contrast-enhanced mammography images. We developed a ResNet-based model and trained it on manually delineated tumor regions from contrast-enhanced mammography images, with a total dataset of 403 images split into training (n=254), internal validation (n=70), and external validation (n=79) sets. The model achieved a training accuracy of 92.13% (95% CI: 88.15-94.85%, p<0.00001) and an AUC-ROC of 0.9048 (95% CI: 0.8338-0.9604, p<0.00001). On the internal validation set, the model maintained robust performance with an accuracy of 87.14% (95% CI: 77.34-93.09%, p<0.00001) and an AUC-ROC of 0.7583 (95% CI: 0.5182-0.9633, p=0.026). Importantly, the model demonstrated good generalization on the external validation set, achieving an accuracy of 89.87% (95% CI: 81.27-94.78%, p<0.00001) and an AUC-ROC of 0.8382 (95% CI: 0.6971-0.9464, p<0.00001). While these results are promising, they should be interpreted with caution due to the limited size and class imbalance in our dataset (approximately 85% positive cases across all sets). The model demonstrated good performance across various metrics on the internal validation set, including precision (87.70%, 95% CI: 78.11-95.60%, p=0.00056), recall (87.14%, 95% CI: 78.57-94.29%, p=0.00056), and F1 score (87.39%, 95% CI: 79.26-94.29%, p=0.00056), with a Matthews Correlation Coefficient of 0.4968 (95% CI: 0.1532-0.7575, p<0.00001). This study serves as a proof-of-concept for the potential of deep learning in analyzing contrast-enhanced mammography images for hormone receptor status prediction. Further research with larger, more diverse datasets and prospective clinical validation is necessary to establish the clinical utility of this approach. Our findings suggest that machine learning techniques may have the potential to assist in breast cancer diagnosis and treatment planning, but considerable work remains to ensure reliability and clinical applicability.
+Breast cancer is a heterogeneous disease, with hormone receptor status playing a crucial role in treatment planning and prognosis. This study explores the potential of deep learning techniques to predict hormone receptor status from contrast-enhanced mammography images. We developed a ResNet-based model and trained it on manually delineated tumor regions from contrast-enhanced mammography images, with a total dataset of 403 images split into training (n=254), internal validation (n=70), and independent test (n=79) sets. The model achieved a training accuracy of 92.13% (95% CI: 88.15-94.85%, p<0.00001) and an AUC-ROC of 0.9048 (95% CI: 0.8338-0.9604, p<0.00001). On the internal validation set, the model maintained robust performance with an accuracy of 87.14% (95% CI: 77.34-93.09%, p<0.00001) and an AUC-ROC of 0.7583 (95% CI: 0.5182-0.9633, p=0.026). Importantly, the model demonstrated good generalization on the independent test set, achieving an accuracy of 89.87% (95% CI: 81.27-94.78%, p<0.00001) and an AUC-ROC of 0.8382 (95% CI: 0.6971-0.9464, p<0.00001). While these results are promising, they should be interpreted with caution due to the limited size and class imbalance in our dataset (approximately 85% positive cases across all sets). The model demonstrated good performance across various metrics on the internal validation set, including precision (87.70%, 95% CI: 78.11-95.60%, p=0.00056), recall (87.14%, 95% CI: 78.57-94.29%, p=0.00056), and F1 score (87.39%, 95% CI: 79.26-94.29%, p=0.00056), with a Matthews Correlation Coefficient of 0.4968 (95% CI: 0.1532-0.7575, p<0.00001). This study serves as a proof-of-concept for the potential of deep learning in analyzing contrast-enhanced mammography images for hormone receptor status prediction. Further research with larger, more diverse datasets and prospective clinical validation is necessary to establish the clinical utility of this approach. Our findings suggest that machine learning techniques may have the potential to assist in breast cancer diagnosis and treatment planning, but considerable work remains to ensure reliability and clinical applicability.
 
 ## Introduction
 
@@ -100,17 +100,17 @@ Figure 3 illustrates cropped contrast-enhanced mammography (CEM) images, showcas
 The dataset was divided into three distinct sets:
 - Training set (n = 254): 217 positive (85.43%) and 37 negative (14.57%) cases
 - Validation set (n = 70): 60 positive (85.71%) and 10 negative (14.29%) cases
-- External validation set (n = 79): 68 positive (86.08%) and 11 negative (13.92%) cases
+- Independent test set (n = 79): 68 positive (86.08%) and 11 negative (13.92%) cases
 
-The distribution of hormone receptor status across the training, validation, and external validation datasets is summarized in Table 1.
+The distribution of hormone receptor status across the training, validation, and independent test datasets is summarized in Table 1.
 
-**Table 1:** Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and external validation datasets.
+**Table 1:** Distribution of Hormone Receptor Status in Contrast-Enhanced Mammography Image Datasets. This table illustrates the number and percentage of positive and negative cases in the training, validation, and independent test datasets.
 
 | Dataset                 | Total Cases (n) | Positive Cases (n, %) | Negative Cases (n, %) |
 |-------------------------|-----------------|------------------------|------------------------|
 | Training Set            | 254             | 217 (85.43%)           | 37 (14.57%)            |
 | Validation Set          | 70              | 60 (85.71%)            | 10 (14.29%)            |
-| External Validation Set | 79              | 68 (86.08%)            | 11 (13.92%)            |
+| Independent Test Set    | 79              | 68 (86.08%)            | 11 (13.92%)            |
 
 #### Statistical Analysis
 Bootstrap analysis with 1000 iterations was performed to calculate 95% confidence intervals for all metrics. P-values were calculated using appropriate statistical tests for each metric:
@@ -185,20 +185,20 @@ On the validation set, the model maintained robust performance with:
 - Balanced Accuracy: 0.7583 (95% CI: 0.5793-0.9133, p=0.01)
 - AUC-ROC: 0.7583 (95% CI: 0.5182-0.9633, p=0.026)
 
-Importantly, the model's performance was validated on an external validation set, where it achieved:
+Importantly, the model's performance was validated on an independent test set, where it achieved:
 - Accuracy: 0.8987 (95% CI: 0.8127-0.9478, p<0.00001)
 - AUC-ROC: 0.8382 (95% CI: 0.6971-0.9464, p<0.00001)
 - Matthews Correlation Coefficient: 0.5179 (95% CI: 0.1516-0.7996, p<0.00001)
 
 The confusion matrices reveal good performance for both positive and negative cases, though with slightly better performance for positive cases, reflecting the class distribution in the training data.
 
-Table 2 summarizes the performance of the ResNet-based model across the training, internal validation, and external validation datasets, providing a detailed breakdown of key metrics, including accuracy, precision, recall, F1 score, Matthews Correlation Coefficient (MCC), balanced accuracy, and AUC-ROC, along with their respective 95% confidence intervals and p-values.
+Table 2 summarizes the performance of the ResNet-based model across the training, internal validation, and independent test datasets, providing a detailed breakdown of key metrics, including accuracy, precision, recall, F1 score, Matthews Correlation Coefficient (MCC), balanced accuracy, and AUC-ROC, along with their respective 95% confidence intervals and p-values.
 
 Figure 4 displays activation heatmaps overlaid on cropped contrast-enhanced mammography (CEM) images, revealing the regions of the lesions that contributed most significantly to the ResNet-50 model’s predictions of hormone receptor positivity.
 
-**Table 2:** Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and external validation datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
+**Table 2:** Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and independent test datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
 
-| **Metric**       | **Training Set [Value (CI95); Rounded P-Value]** | **Validation Set [Value (CI95); Rounded P-Value]** | **External Validation Set [Value (CI95); Rounded P-Value]** |
+| **Metric**       | **Training Set [Value (CI95); Rounded P-Value]** | **Validation Set [Value (CI95); Rounded P-Value]** | **Independent Test Set [Value (CI95); Rounded P-Value]** |
 |:------------------|:-------------------------------------------------|:---------------------------------------------------|:-------------------------------------------------------------|
 | **Loss**          | 0.2199                                           | 0.3746                                             | -                                                            |
 | **Accuracy**      | 0.9213 (0.8815, 0.9485); <0.00001               | 0.8714 (0.7734, 0.9309); <0.00001                | 0.8987 (0.8127, 0.9478); <0.00001                           |
@@ -241,7 +241,7 @@ Given the significant class imbalance in our dataset (85.43% positive cases in t
 
 In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, suggesting that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
 
-The high accuracy achieved by our model on both internal and external validation sets is encouraging, especially considering the complexity of the task and the limited size of our dataset. The model's ability to maintain good performance across various metrics, including precision, recall, F1 score, and balanced accuracy, indicates its potential robustness in handling both positive and negative cases. This is particularly noteworthy given the significant class imbalance present in our dataset.
+The high accuracy achieved by our model on both internal validation and independent test sets is encouraging, especially considering the complexity of the task and the limited size of our dataset. The model's ability to maintain good performance across various metrics, including precision, recall, F1 score, and balanced accuracy, indicates its potential robustness in handling both positive and negative cases. This is particularly noteworthy given the significant class imbalance present in our dataset.
 
 The Matthews Correlation Coefficient (MCC) on the validation set is especially promising. Given that MCC is particularly useful for evaluating binary classifications on imbalanced datasets, this result suggests that our model's performance is substantially better than random guessing, even when accounting for the class imbalance.
 
@@ -257,7 +257,7 @@ However, it is crucial to interpret these results with caution due to several li
 
 2. Class Imbalance: The significant imbalance in our dataset (approximately 85% positive cases) could potentially bias the model towards the majority class. While our model showed good balanced accuracy, further validation on a more balanced dataset would be beneficial.
 
-3. Lack of True External Validation: Our model was trained and validated on data from a single institution. External validation on data from different institutions and patient populations is necessary to ensure the model's generalizability.
+3. Lack of True External Validation: Our model was trained, validated and independently tested on data from a single institution. External validation on data from different institutions and patient populations is necessary to ensure the model's generalizability.
 
 4. Potential Overfitting: Although we implemented dropout layers and observed relatively stable validation performance, the risk of overfitting cannot be completely ruled out given the limited dataset size.
 
