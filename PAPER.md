@@ -127,41 +127,13 @@ Several considerations temper the interpretation of our findings. First, the stu
 
 Despite these limitations, the study provides a transparent baseline for HR-status prediction from CEM and underscores the value of imbalance-aware reporting. Future research should incorporate patient-level splits, harmonised acquisition protocols, automatic lesion localisation, consensus pathology thresholds and direct modality comparisons to clarify the clinical role of CEM-based deep learning in molecular characterisation.
 
-## Conclusion and Future Directions
+## Conclusion  
 
-Our study demonstrates the potential of deep learning techniques in predicting hormone receptor status from contrast-enhanced mammography images. While our results are promising and competitive with other imaging-based approaches, they should be considered preliminary given the limitations of our study.
+A convolutional neural network as conventional as ResNet-50 can extract informative features from contrast-enhanced mammography and, in this preliminary study, predicts hormone-receptor status with 89.9 % accuracy and an AUC-ROC of 0.84 on an independent-test set. The accompanying balanced accuracy of 0.71 and Matthews correlation coefficient of 0.52 indicate that the model retains discriminative value despite a markedly skewed class distribution. These results, achieved with minimal preprocessing and without architectural customisation, confirm the presence of biologically relevant signal in CEM images.
 
-Future research directions should focus on addressing these limitations and further validating the approach:
+Interpretation, however, must remain cautious. The dataset is small, originates from a single institution, and was split at image rather than patient level; late-phase images were mixed with standard early images; variable aspect ratios were introduced during cropping; and pathology reports provided HR labels without a uniform immunohistochemical threshold. Each of these factors can influence performance estimates.
 
-1. Larger, More Diverse Datasets: Collecting a larger dataset with a more balanced distribution of positive and negative cases from multiple institutions would help improve the model's generalizability and robustness.
-
-2. External Validation: Validating the model on completely independent datasets from different institutions and patient populations is crucial for assessing its true clinical potential.
-
-3. Prospective Studies: Conducting prospective studies to compare the model's predictions with standard immunohistochemical analysis would provide stronger evidence of its clinical utility.
-
-4. Model Interpretability: Investigating techniques to improve the interpretability of the model, such as attention mechanisms or feature visualization, could help build trust in the model's predictions and potentially provide new insights into imaging biomarkers of hormone receptor status.
-
-5. Multi-modal Approaches: Integrating other forms of data, such as clinical information or other imaging modalities, could potentially improve prediction accuracy and provide a more comprehensive assessment of tumor characteristics.
-
-6. Comparison with Radiologists: Conducting studies to compare the model's performance with that of experienced radiologists could help establish the potential added value of AI in this context.
-
-7. Fine-grained Classification: Extending the model to predict not just binary hormone receptor status, but also the level of receptor expression or to distinguish between ER and PR status could provide more nuanced information for treatment planning.
-
-8. Transfer Learning Investigation: Exploring how well the model's learned features transfer to related tasks, such as predicting other molecular subtypes of breast cancer, could reveal insights into the generalizability of imaging features.
-
-9. Longitudinal Studies: Investigating the model's ability to detect changes in hormone receptor status over time could be valuable for monitoring treatment response and disease progression.
-
-10. Explainable AI Techniques: Implementing and evaluating explainable AI techniques could help identify which imaging features are most important for predicting hormone receptor status, potentially leading to new imaging biomarkers.
-
-11. Robustness Analysis: Conducting thorough analyses of the model's performance across different subgroups (e.g., age groups, breast density categories) and its sensitivity to image quality variations would be crucial for understanding its limitations and potential biases.
-
-12. Clinical Integration Studies: Exploring how such a model could be integrated into clinical workflows and decision-making processes, including studies on its impact on clinical outcomes and cost-effectiveness.
-
-13. Validation with Surgical Specimens: Future studies should aim to train and validate the model using hormone receptor status determined from post-operative surgical specimens. This would help address potential sampling biases associated with pre-operative biopsies and provide a more accurate ground truth for model training and evaluation.
-
-14. Comparative Studies: Conducting studies that directly compare the performance of models based on contrast-enhanced mammography, standard mammography, and MRI within the same patient cohort would provide valuable insights into the relative merits of each approach.
-
-In conclusion, while our study presents promising initial results, it represents only a first step towards the clinical application of AI in predicting hormone receptor status from contrast-enhanced mammography images. Our approach offers advantages in terms of accessibility and efficiency compared to MRI-based methods, while potentially providing more information than standard mammography. However, a successful clinical implementation will require extensive validation, careful consideration of ethical implications, and close collaboration between AI researchers, clinicians, and regulatory bodies.
+Even so, the study offers a transparent baseline and emphasises the importance of reporting imbalance-aware metrics in molecular-imaging AI. Extending this work to multi-centre cohorts, harmonised CEM protocols, patient-level splits and automatic lesion localisation will be essential next steps toward assessing whether CEM-based deep learning can contribute meaningfully to non-invasive tumour characterisation in clinical practice.
 
 ## Bibliography
 
