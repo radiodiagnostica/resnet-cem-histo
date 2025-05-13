@@ -1,10 +1,5 @@
 # Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study
 
-## Status
-Work in progress, still to do:
-- **Check citations**
-- **Additional dataset informations (inclusion criteria, ethics...)**
-
 ## Abstract
 
 **Background** Hormone-receptor (HR) status guides systemic therapy in breast cancer but is currently determined invasively by immunohistochemistry. Deep learning applied to contrast-enhanced mammography (CEM) may provide a non-invasive alternative.
