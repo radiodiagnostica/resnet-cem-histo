@@ -83,82 +83,39 @@ Performance on the training, validation and independent-test sets was summarised
 ### Implementation and hardware  
 The pipeline is implemented in Python with PyTorch; full requirements and source code are available on GitHub (link in the Data-availability statement). Experiments ran on an Apple M2 laptop with 8 GB unified memory via the Metal Performance Shaders backend; the script automatically falls back to CUDA GPU or CPU if available.
 
-## Results
+## Results  
 
-### Model Training Dynamics
+### Training behaviour  
+The cross-entropy loss declined from 0.46 at epoch 1 to 0.22 at epoch 50. Correspondingly, accuracy rose from 81 % to 92 % on the training set, while validation accuracy stabilised between 85 % and 88 % after epoch 35, suggesting limited over-fitting.
 
-Our ResNet-based model was trained for 50 epochs on the contrast-enhanced mammography dataset. Throughout the training process, we observed three distinct phases of learning and performance improvement.
+### Final model performance  
+Discrimination results with 95 % bootstrap confidence intervals are listed in Table 2.  
 
-#### Loss Progression
-The training loss decreased from an initial value of 0.4571 in the first epoch to 0.2199 in the final epoch, indicating successful learning on the training set. Similarly, the validation loss showed a consistent decrease from 0.5215 to 0.3718, suggesting good generalization to unseen data.
+* Training set: accuracy 92.1 % (CI 88.2–94.9 %) and AUC-ROC 0.9048 (0.8338–0.9604).  
+* Validation set: accuracy 87.1 % (77.3–93.1 %), balanced accuracy 0.7583 (0.5769–0.9133) and MCC 0.4968 (0.1564–0.7517).  
+* Independent-test set: accuracy 89.9 % (81.3–94.8 %), AUC-ROC 0.8382 (0.6971–0.9464), balanced accuracy 0.7126 (0.5628–0.8746) and MCC 0.5179 (0.1516–0.7996).  
 
-#### Accuracy Progression
-The model's accuracy on the training set improved from 81.50% (95% CI: 76.26-85.79%) in the first epoch to 92.13% (95% CI: 88.15-94.85%) in the final epoch. The validation accuracy improved from 85.71% (95% CI: 75.66-92.05%) in early epochs to 87.14% (95% CI: 77.34-93.09%) in the final epoch.
+The modest gap between overall accuracy and balanced accuracy reflects the pronounced class imbalance (~85 % HR-positive).
 
-### Final Model Performance
+| Metric | Training set | Validation set | Independent-test set |
+|---|---|---|---|
+| Accuracy | 0.9213 (0.8815–0.9485) | 0.8714 (0.7734–0.9309) | 0.8987 (0.8127–0.9478) |
+| Precision | 0.9170 (0.8794–0.9502) | 0.8770 (0.7973–0.9528) | 0.8885 (0.8072–0.9616) |
+| Recall | 0.9213 (0.8898–0.9528) | 0.8714 (0.7857–0.9429) | 0.8987 (0.8351–0.9620) |
+| F1-score | 0.9147 (0.8744–0.9506) | 0.8739 (0.7939–0.9429) | 0.8889 (0.8056–0.9594) |
+| Balanced accuracy | 0.7746 (0.6904–0.8575) | 0.7583 (0.5769–0.9133) | 0.7126 (0.5628–0.8746) |
+| MCC | 0.6503 (0.5155–0.7822) | 0.4968 (0.1564–0.7517) | 0.5179 (0.1516–0.7996) |
+| AUC-ROC | 0.9048 (0.8338–0.9604) | 0.7583 (0.5182–0.9633) | 0.8382 (0.6971–0.9464) |
 
-The model achieved strong performance across all evaluation sets. On the training set, the model achieved an accuracy of 0.9213 (95% CI: 0.8815-0.9485, p<0.00001) and an AUC-ROC of 0.9048 (95% CI: 0.8338-0.9604, p<0.00001).
+**Table 2.** Performance metrics for the final ResNet-50 model; values are point estimates followed by 95 % confidence intervals.
 
-On the validation set, the model maintained robust performance with:
-- Accuracy: 0.8714 (95% CI: 0.7734-0.9309, p<0.00001)
-- Precision: 0.8770 (95% CI: 0.7811-0.9560, p=0.00056)
-- Recall: 0.8714 (95% CI: 0.7857-0.9429, p=0.00056)
-- F1 Score: 0.8739 (95% CI: 0.7926-0.9429, p=0.00056)
-- Matthews Correlation Coefficient: 0.4968 (95% CI: 0.1532-0.7575, p<0.00001)
-- Balanced Accuracy: 0.7583 (95% CI: 0.5793-0.9133, p=0.01)
-- AUC-ROC: 0.7583 (95% CI: 0.5182-0.9633, p=0.026)
+Figure 4 shows Grad-CAM visualisations for representative correctly and incorrectly classified cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
-Importantly, the model's performance was validated on an independent test set, where it achieved:
-- Accuracy: 0.8987 (95% CI: 0.8127-0.9478, p<0.00001)
-- AUC-ROC: 0.8382 (95% CI: 0.6971-0.9464, p<0.00001)
-- Matthews Correlation Coefficient: 0.5179 (95% CI: 0.1516-0.7996, p<0.00001)
+![activated-cropped-cems](activated-cropped-cems.png)  
+**Figure 4.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
 
-The confusion matrices reveal good performance for both positive and negative cases, though with slightly better performance for positive cases, reflecting the class distribution in the training data.
-
-Table 2 summarizes the performance of the ResNet-based model across the training, internal validation, and independent test datasets, providing a detailed breakdown of key metrics, including accuracy, precision, recall, F1 score, Matthews Correlation Coefficient (MCC), balanced accuracy, and AUC-ROC, along with their respective 95% confidence intervals and p-values.
-
-Figure 4 displays activation heatmaps overlaid on cropped contrast-enhanced mammography (CEM) images, revealing the regions of the lesions that contributed most significantly to the ResNet-50 model’s predictions of hormone receptor positivity.
-
-**Table 2:** Performance Metrics of the ResNet-Based Model for Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images. Metrics are reported in the format [Value (95% Confidence Interval); Rounded P-Value]. The model demonstrates strong performance across training, internal validation, and independent test datasets. While results are promising, limitations such as dataset size and class imbalance should be considered when interpreting these findings.
-
-| **Metric**       | **Training Set [Value (CI95); Rounded P-Value]** | **Validation Set [Value (CI95); Rounded P-Value]** | **Independent Test Set [Value (CI95); Rounded P-Value]** |
-|:------------------|:-------------------------------------------------|:---------------------------------------------------|:-------------------------------------------------------------|
-| **Loss**          | 0.2199                                           | 0.3746                                             | -                                                            |
-| **Accuracy**      | 0.9213 (0.8815, 0.9485); <0.00001               | 0.8714 (0.7734, 0.9309); <0.00001                | 0.8987 (0.8127, 0.9478); <0.00001                           |
-| **Precision**     | 0.9170 (0.8794, 0.9502); <0.00001               | 0.8770 (0.7973, 0.9528); 0.00056                 | 0.8885 (0.8072, 0.9616); 0.00037                            |
-| **Recall**        | 0.9213 (0.8898, 0.9528); <0.00001               | 0.8714 (0.7857, 0.9429); 0.00056                 | 0.8987 (0.8351, 0.9620); 0.00037                            |
-| **F1 Score**      | 0.9147 (0.8744, 0.9506); <0.00001               | 0.8739 (0.7939, 0.9429); 0.00056                 | 0.8889 (0.8056, 0.9594); 0.00037                            |
-| **MCC**           | 0.6503 (0.5155, 0.7822); <0.00001               | 0.4968 (0.1564, 0.7517); 0.00001                 | 0.5179 (0.1516, 0.7996); 0.00001                            |
-| **Balanced Acc.** | 0.7746 (0.6904, 0.8575); <0.00001               | 0.7583 (0.5769, 0.9133); 0.006                 | 0.7126 (0.5628, 0.8746); 0.01                            |
-| **AUC-ROC**       | 0.9048 (0.8338, 0.9604); <0.00001               | 0.7583 (0.5040, 0.9598); 0.048                 | 0.8382 (0.6971, 0.9464); <0.00001                           |
-
-![activated-cropped-cems](activated-cropped-cems.png)
-**Figure 4:** Activation Heatmaps for Cropped Contrast-Enhanced Mammography (CEM) Images. This figure presents activation heatmaps generated using Grad-CAM (Gradient-weighted Class Activation Mapping) overlaid on cropped CEM images containing the tumor and surrounding breast tissue. The heatmaps highlight the regions of the image that were most influential in the ResNet-50 model’s prediction of hormone receptor positivity. Warmer colors (e.g., red and yellow) indicate areas with higher importance, while cooler colors (e.g., blue) represent less significant regions. These visualizations provide insights into the model’s decision-making process.
-
-### Performance Across Different Metrics
-
-#### Precision and Recall
-The model demonstrated a good balance between precision and recall. In the final epoch, the validation set precision was 87.70% (95% CI: 78.66-95.31%) and recall was 87.14% (95% CI: 78.57-94.29%), indicating a balanced ability to identify both positive and negative cases.
-
-#### F1 Score
-The F1 score reached 87.39% (95% CI: 79.83-94.44%) on the validation set in the final epoch. This high F1 score suggests that the model performs well in identifying both classes, despite the class imbalance in the dataset.
-
-#### Matthews Correlation Coefficient (MCC)
-The MCC showed significant improvement from 0.0307 (95% CI: -0.0950-0.1711) in the first epoch to 0.4968 (95% CI: 0.1726-0.7499) in the final epoch for the validation set. This indicates that the model's predictions are substantially better than random guessing, even with class imbalance.
-
-#### Balanced Accuracy
-The balanced accuracy on the validation set improved from 51.06% (95% CI: 46.80-56.10%) in early epochs to 75.83% (95% CI: 60.00-92.81%) by the final epoch. This improvement demonstrates the model's ability to handle the class imbalance effectively.
-
-#### Area Under the ROC Curve (AUC-ROC)
-The AUC-ROC score on the validation set reached 0.7567 (95% CI: 0.5351-0.9635, p=0.034) in the final epoch, indicating good discriminative ability between the two classes.
-
-### Training Stability and Overfitting
-
-The model showed relatively stable performance in later epochs, with consistent validation performance suggesting effective control of overfitting. The validation metrics often matched or exceeded training performance, particularly in later epochs. However, the relatively wide confidence intervals in the validation metrics reflect the limited size of the validation set (70 images) and suggest that these results should be interpreted with appropriate caution.
-
-### Class Imbalance Considerations
-
-Given the significant class imbalance in our dataset (85.43% positive cases in the training set, 85.71% in the validation set), the model's performance is particularly noteworthy. The balanced accuracy of 75.83% and MCC of 0.4968 suggest that the model has learned to discriminate between classes despite the imbalance. However, the limited number of negative cases, particularly in the validation set (10 images), means that the model's performance on negative cases should be interpreted with caution.
+### Computational aspects  
+Complete training (50 epochs) required approximately **30 minutes** on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
 
 ## Discussion
 
