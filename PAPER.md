@@ -117,43 +117,15 @@ Figure 4 shows Grad-CAM visualisations for representative correctly and incorrec
 ### Computational aspects  
 Complete training (50 epochs) required approximately **30 minutes** on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
 
-## Discussion
+## Discussion  
 
-In this study, we developed and evaluated a deep learning model based on the ResNet-50 architecture to predict hormone receptor status from contrast-enhanced mammography images. Our model demonstrated promising performance, suggesting that deep learning techniques applied to contrast-enhanced mammography images may have potential in non-invasively predicting hormone receptor status in breast cancer.
+In this retrospective proof-of-concept we show that a standard ResNet-50, trained on manually cropped regions of contrast-enhanced mammograms, achieves 89.9 % accuracy and an AUC-ROC of 0.84 on an independent-test set when predicting hormone-receptor (HR) status. Reporting balanced accuracy (0.71) and Matthews correlation coefficient (0.52) alongside conventional metrics provides additional insight into model behaviour under the pronounced class imbalance (~85 % HR-positive). Few previous CEM studies have supplied such imbalance-aware figures, so our results extend the quantitative picture offered in earlier work.
 
-The high accuracy achieved by our model on both internal validation and independent test sets is encouraging, especially considering the complexity of the task and the limited size of our dataset. The model's ability to maintain good performance across various metrics, including precision, recall, F1 score, and balanced accuracy, indicates its potential robustness in handling both positive and negative cases. This is particularly noteworthy given the significant class imbalance present in our dataset.
+When placed beside the literature, performance is broadly comparable. Dominique et al. obtained an AUC of 0.82 for ER prediction using full-field CEM images [17]; Marino et al. reported radiomics-based AUCs between 0.77 and 0.83 for molecular subtyping [16]; and Zeng et al. reached up to 0.80 for ER, PR and HER2 prediction on standard mammography [12]. Differences in cohort size, imaging protocol, input representation and HR definition prevent direct head-to-head comparison, yet the collective evidence suggests that CEM harbours imaging surrogates of tumour biology that CNNs can exploit.
 
-The Matthews Correlation Coefficient (MCC) on the validation set is especially promising. Given that MCC is particularly useful for evaluating binary classifications on imbalanced datasets, this result suggests that our model's performance is substantially better than random guessing, even when accounting for the class imbalance.
+Several considerations temper the interpretation of our findings. First, the study draws on a small single-centre cohort, so external validity remains uncertain. Second, images—not patients—were randomised across the training, validation and test subsets; the possibility that multiple projections from the same woman appear in different splits raises a risk of information leakage.  Third, to enlarge the dataset we retained late low-dose images acquired seven minutes after contrast injection in addition to standard one-minute images. The influence of mixing phases is unknown but may have introduced unwanted variation. Fourth, lesion patches were resized with `RandomResizedCrop`, which can subtly stretch or compress the tumour; the impact of this variable aspect ratio has not been quantified. Fifth, HR labels were copied verbatim from pathology reports without a uniform immunohistochemical threshold, introducing potential label noise. Sixth, although evaluation used balanced accuracy and MCC, the network was optimised with unweighted cross-entropy and the best epoch selected by validation accuracy—decisions that can favour the majority class. Seventh, our CEM protocol uses a one-minute post-contrast delay, whereas many sites image at two minutes; variation in timing, injection rate and detector technology could affect generalisability. Finally, no parallel analysis of MRI or ultrasound was performed, so the relative diagnostic contribution of CEM cannot be inferred from this work.
 
-When compared to previous studies, our results are competitive and in some cases superior. For instance, Zeng et al. achieved lower AUCs for ER and PR prediction using standard mammography [17], while our model achieved higher AUCs across validation tests. This suggests that contrast-enhanced mammography may provide additional valuable information for hormone receptor status prediction.
-
-Our approach also compares favorably with MRI-based methods. Huang et al. reported an AUC for differentiating luminal and non-luminal subtypes using DCE-MRI that is similar to our results [18]. However, our model achieves this performance using a more accessible and faster imaging modality. Ming et al. achieved higher AUCs for ER and PR prediction using multi-scale DCE-MRI images [19], but their approach requires more complex image acquisition and processing.
-
-The study by Dominique et al., which also used contrast-enhanced mammography, reported AUCs for ER status prediction comparable to our results [20]. However, our study extends beyond this by attempting to predict overall hormone receptor status, potentially offering a more comprehensive assessment.
-
-However, it is crucial to interpret these results with caution due to several limitations of our study:
-
-1. Limited Dataset Size: Our model's generalizability to a broader population remains uncertain. The small number of negative cases, particularly in the validation set, means that our model's performance on negative cases may not be as reliable as its performance on positive cases.
-
-2. Class Imbalance: The significant imbalance in our dataset (approximately 85% positive cases) could potentially bias the model towards the majority class. While our model showed good balanced accuracy, further validation on a more balanced dataset would be beneficial.
-
-3. Lack of True External Validation: Our model was trained, validated and independently tested on data from a single institution. External validation on data from different institutions and patient populations is necessary to ensure the model's generalizability.
-
-4. Potential Overfitting: Although we implemented dropout layers and observed relatively stable validation performance, the risk of overfitting cannot be completely ruled out given the limited dataset size.
-
-5. Black Box Nature: Like many deep learning models, our ResNet-based model operates as a "black box," making it challenging to understand the specific image features it uses to make predictions. This lack of interpretability could be a barrier to clinical adoption.
-
-6. Pre-operative Biopsy Sampling: Our model was trained using hormone receptor status determined from pre-operative biopsies. This approach may be subject to sampling biases due to tumor heterogeneity. Future studies should consider confirming and training the model using post-operative surgical specimens, which may provide a more accurate representation of the tumor's overall hormone receptor status.
-
-Despite these limitations, our study provides a promising proof-of-concept for the use of deep learning in predicting hormone receptor status from contrast-enhanced mammography images. If further validated, this approach could potentially offer several advantages in clinical practice:
-
-1. Non-invasive Assessment: Predicting hormone receptor status from imaging data could reduce the need for invasive biopsies, particularly in cases where biopsy might be challenging or risky.
-
-2. Rapid Results: Deep learning models can provide predictions almost instantaneously, potentially allowing for faster treatment planning.
-
-3. Whole Tumor Analysis: Unlike biopsies, which sample only a portion of the tumor, imaging-based predictions could potentially account for tumor heterogeneity by analyzing the entire visible tumor.
-
-4. Longitudinal Monitoring: Non-invasive prediction of hormone receptor status could facilitate easier monitoring of potential changes in receptor status over time or in response to treatment.
+Despite these limitations, the study provides a transparent baseline for HR-status prediction from CEM and underscores the value of imbalance-aware reporting. Future research should incorporate patient-level splits, harmonised acquisition protocols, automatic lesion localisation, consensus pathology thresholds and direct modality comparisons to clarify the clinical role of CEM-based deep learning in molecular characterisation.
 
 ## Conclusion and Future Directions
 
