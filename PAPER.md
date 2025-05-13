@@ -1,27 +1,28 @@
 # Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study
 
-## Abstract
+## Abstract  
 
-**Background** Hormone-receptor (HR) status guides systemic therapy in breast cancer but is currently determined invasively by immunohistochemistry. Deep learning applied to contrast-enhanced mammography (CEM) may provide a non-invasive alternative.
+**Background**: Hormone-receptor (HR) status steers systemic therapy in breast cancer but is currently obtained invasively. Contrast-enhanced mammography (CEM) might offer a non-invasive surrogate if coupled with deep learning.
 
-**Methods** We collected 403 manually delineated tumour regions from CEM examinations and divided them into a training set (n = 254), a validation set (n = 70) and an **independent-test set** (n = 79). A pre-trained ResNet-50 was fine-tuned with standard cross-entropy loss. Model performance was reported with traditional metrics (accuracy, AUC-ROC) and imbalance-aware metrics (balanced accuracy, Matthews correlation coefficient [MCC]).
+**Methods**: 403 tumour regions were manually cropped from early (1-min) and late (7-min) recombined CEM images of 70 women with biopsy-proven invasive cancer. Crops were randomised at image level into a training set (n = 254), a validation set (n = 70) and an independent-test set (n = 79). A ResNet-50—pre-trained on ImageNet and fine-tuned with standard cross-entropy—was trained for 50 epochs. Performance was reported with accuracy, AUC-ROC and imbalance-aware metrics (balanced accuracy, Matthews correlation coefficient [MCC]); 95 % confidence intervals (CI) were obtained by 1 000-iteration bootstrap.
 
-**Results** On the training set the network achieved an accuracy of 92.13 % (95 % CI 88.15–94.85) and an AUC-ROC of 0.9048 (0.8338–0.9604).  
-Validation-set performance remained robust—accuracy 87.14 % (77.34–93.09), AUC-ROC 0.7583 (0.5182–0.9633), balanced accuracy 0.7583 (0.5769–0.9133) and MCC 0.4968 (0.1564–0.7517).  
-On the independent-test set the model reached accuracy 89.87 % (81.27–94.78), AUC-ROC 0.8382 (0.6971–0.9464), balanced accuracy 0.7126 (0.5628–0.8746) and MCC 0.5179 (0.1516–0.7996).
+**Results**: Training accuracy reached 92.13 % (95 % CI 88.15–94.85) with an AUC-ROC of 0.9048 (0.8338–0.9604). Validation accuracy was 87.14 % (77.34–93.09); balanced accuracy 0.7583 (0.5793–0.9133); MCC 0.4968 (0.1532–0.7575). On the independent-test set the network achieved 89.87 % accuracy (81.27–94.78), AUC-ROC 0.8382 (0.6971–0.9464), balanced accuracy 0.7126 (0.5628–0.8746) and MCC 0.5179 (0.1516–0.7996).
 
-**Conclusion** A ResNet-50 model can discriminate HR-positive from HR-negative tumours on CEM with encouraging accuracy and favourable imbalance-aware metrics, despite a heavily skewed class distribution (~85 % HR-positive). Validation in larger multi-centre cohorts is required before clinical adoption.
+**Conclusion**: A conventional ResNet-50 can capture CEM features related to HR status, performing well even under pronounced class imbalance. Small single-centre size, image-level splitting and the mixture of early and late CEM phases limit generalisability; larger multi-institution cohorts and patient-level experiments are required.
 
-## Key Points  
+## Key points  
 
-- ResNet-50 achieved 89.9 % accuracy and an AUC-ROC of 0.84 on an independent-test CEM cohort when predicting hormone-receptor positivity.  
-- Balanced accuracy of 0.71 and MCC of 0.52 indicate reliable discrimination despite an 85 % prevalence of HR-positive cases.  
-- Results support further multi-centre research into CEM-based AI as a non-invasive surrogate for tissue-based HR testing.
+• ResNet-50 predicted HR positivity on CEM with 89.9 % accuracy and AUC-ROC 0.84 in an independent-test cohort.  
 
-## Relevance Statement  
+• Balanced accuracy (0.71) and MCC (0.52) demonstrate maintained discrimination despite an 85 % class imbalance.  
 
-Concept Demonstrates that CEM images contain sufficient signal for deep-learning-based prediction of hormone-receptor status.  
-Implementation Reports balanced accuracy and MCC, metrics that remain informative under severe class imbalance, alongside conventional accuracy and AUC-ROC.
+• Study limitations include small single-centre dataset, image-level rather than patient-level split, and mixing of early- and late-phase CEM images.
+
+## Relevance statement  
+
+Concept: This work explores whether routinely acquired CEM images contain enough information for deep-learning prediction of hormone-receptor status, aiming at a less invasive complement to biopsy.  
+
+Implementation: A benchmark ResNet-50 was trained with minimal preprocessing; performance was quantified with imbalance-aware metrics to provide a realistic assessment in a highly skewed dataset, highlighting both the promise and current constraints of CEM-based molecular imaging.
 
 ## Introduction
 
