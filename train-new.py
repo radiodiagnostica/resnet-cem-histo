@@ -144,19 +144,45 @@ def build_transforms(img_size):
     ])
     return train_tf, eval_tf
 
-def make_loader(root, split, tf, batch_size, balance=False):
-    ds = datasets.ImageFolder(Path(root)/split, transform=tf)
-    pin_mem = torch.cuda.is_available()          # skip pin_memory on Apple M-series
-    if balance and split=='train':
-        targets = [s[1] for s in ds.samples]
-        class_cnt = np.bincount(targets)         # [n_pos, n_neg] depending on encoding
-        weights   = 1./class_cnt[targets]
-        sampler   = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
-        loader = DataLoader(ds, batch_size=batch_size, sampler=sampler,
-                            num_workers=4, pin_memory=pin_mem)
+def make_loader(root,                # dataset root
+                split,               # 'train' | 'val' | 'external_val'
+                tf,                  # torchvision transforms
+                batch_size,
+                balance   = False,
+                workers   = 2,       # ↓ reduced from 4
+                prefetch  = 1):      # ↓ reduced from default 2
+    """
+    Build a DataLoader with sensible defaults for macOS
+    (low file-descriptor limit).  Uses a weighted sampler when
+    balance=True and split=='train'.
+    Can be combined with setting 'ulimit -Sn 4096' on system shell.
+    """
+    ds       = datasets.ImageFolder(Path(root) / split, transform=tf)
+    pin_mem  = torch.cuda.is_available()          # pin only if CUDA GPU present
+
+    if balance and split == 'train':
+        # ----- class-balanced sampling -----
+        targets      = [s[1] for s in ds.samples]
+        class_counts = np.bincount(targets)
+        weights      = 1.0 / class_counts[targets]
+        sampler      = WeightedRandomSampler(weights,
+                                             num_samples=len(weights),
+                                             replacement=True)
+        shuffle = False
     else:
-        loader = DataLoader(ds, batch_size=batch_size, shuffle=(split=='train'),
-                            num_workers=4, pin_memory=pin_mem)
+        sampler = None
+        shuffle = (split == 'train')
+
+    loader = DataLoader(
+        ds,
+        batch_size        = batch_size,
+        shuffle           = shuffle,
+        sampler           = sampler,
+        num_workers       = workers,
+        prefetch_factor   = prefetch,
+        persistent_workers= workers > 0,    # keep worker FDs open between epochs
+        pin_memory        = pin_mem
+    )
     return loader, ds
 
 # ----------------------------- Model & loss -----------------------------------
