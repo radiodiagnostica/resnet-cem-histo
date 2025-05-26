@@ -1,438 +1,378 @@
 #!/usr/bin/env python3
 """
-Hormone-receptor (+/–) classification on cropped mammograms
-────────────────────────────────────────────────────────────
-Patient-level split, proper class-imbalance handling, bootstrap CIs,
-permutation p-values and data-driven threshold tuning.
-
-This version contains a new *fully-vectorised* implementation of the
-metric / statistics block that is typically >10× faster than the
-original (no Python loops in the hot path).
-
-Directory layout (unchanged):
-
-data_root/
- ├── train/         (sub-folders 0, 1)
- ├── val/
- └── external_val/
+Hormone-receptor (+/–) classification – CV + calibration
+──────────────────────────────────────────────────────────
+Main features:
+  ✓ 5-fold CV with early-stopping (patience=3)
+  ✓ freeze-then-unfreeze schedule
+  ✓ optional focal-loss
+  ✓ optional temperature-scaling calibration
+  ✓ single threshold per fold (F1-optimised), median used on external set
+  ✓ external evaluation with ensemble of calibrated models
 """
+
 from __future__ import annotations
-import argparse, os, random, time, copy, warnings, sys
+import argparse, copy, os, random, time, warnings
 from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 
 import numpy as np
 import pandas as pd
-from PIL import Image
 from tqdm.auto import tqdm
+from PIL import Image
 
 import torch, torch.nn as nn
-from torch.utils.data import DataLoader, WeightedRandomSampler
-from torchvision import transforms, datasets, models
+from torch.utils.data import DataLoader, WeightedRandomSampler, Subset
+from torchvision import datasets, transforms, models
 from torchvision.models import ResNet18_Weights
+from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    matthews_corrcoef, balanced_accuracy_score, roc_auc_score
-)
+# ─────────────────────────── Hyper-parameters ────────────────────────────
+IMG_SIZE       = 384
+LR_HEAD        = 1e-4
+LR_BACKBONE    = 1e-5
+WEIGHT_DECAY   = 1e-4
+EPOCHS         = 30
+BATCH_SIZE     = 16
+N_BOOT         = 2_000
+N_PERM         = 2_000
+SEED           = 42
+PATIENCE       = 3
+N_FOLDS        = 5
+FROZEN_EPOCHS  = 2
+# ──────────────────────────────────────────────────────────────────────────
 
-# ───────────────────────────── Globals / Hyper-params ─────────────────────────
-IMG_SIZE      = 384
-LR            = 1e-4
-WEIGHT_DECAY  = 1e-4
-EPOCHS        = 30
-BATCH_SIZE    = 16
-N_BOOT        = 2_000
-N_PERM        = 2_000
-SEED          = 42
-EARLY_STOP    = 0          # 0 → disabled   (set >0 for early-stop patience)
-# ──────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────── Reproducibility & PyTorch boiler-plate ───────────────────
-def set_seed(seed: int = SEED) -> None:
+# ───────── reproducibility & device ──────────────────────────────────────
+def set_seed(seed: int = SEED):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)        # safe on non-cuda
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark      = False
+    torch.backends.cudnn.benchmark = False
 set_seed()
 
 def get_device() -> torch.device:
     if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():   # Apple Silicon (M1/M2)
-        return torch.device("mps")
-    return torch.device("cpu")
+        return torch.device('cuda')
+    if torch.backends.mps.is_available():
+        return torch.device('mps')
+    return torch.device('cpu')
 
 DEVICE = get_device()
-print(f"Running on device: {DEVICE}")
-
-# Better matmul on Apple Silicon
-if DEVICE.type == "mps":
+if DEVICE.type == 'mps':
     torch.set_float32_matmul_precision('high')
+print("Running on:", DEVICE)
 
-# ───────────────────────── Metric & statistics utilities ──────────────────────
-def _to_pred(y_prob: np.ndarray, thr: float) -> np.ndarray:
-    return (y_prob >= thr).astype(int)
+# ───────────────────────── stats utilities ───────────────────────────────
+def _to_pred(p: np.ndarray, thr: float):
+    return (p >= thr).astype(int)
 
-# ----------  fast, fully-vectorised bootstrap & permutation  -----------------
 def _confusion_mtx(y_true, y_pred):
-    """Return TP, FP, FN, TN for *each row* of the 2-D input arrays."""
-    tp = np.sum((y_true == 1) & (y_pred == 1), axis=1)
-    fp = np.sum((y_true == 0) & (y_pred == 1), axis=1)
-    fn = np.sum((y_true == 1) & (y_pred == 0), axis=1)
-    tn = np.sum((y_true == 0) & (y_pred == 0), axis=1)
-    return tp, fp, fn, tn
+    tp = np.sum((y_true==1)&(y_pred==1), axis=1)
+    fp = np.sum((y_true==0)&(y_pred==1), axis=1)
+    fn = np.sum((y_true==1)&(y_pred==0), axis=1)
+    tn = np.sum((y_true==0)&(y_pred==0), axis=1)
+    return tp,fp,fn,tn
 
-# ────────────────────── vectorised metrics (warning-free) ─────────────────────
-def _metrics_from_conf(tp, fp, fn, tn):
-    """
-    Compute confusion-matrix metrics from TP / FP / FN / TN vectors
-    (works with scalars or 1-D NumPy arrays).
+def _metrics_from_conf(tp,fp,fn,tn):
+    n   = tp+fp+fn+tn
+    acc = (tp+tn)/n
+    prec= np.divide(tp,tp+fp,out=np.zeros_like(tp,dtype=float),where=(tp+fp)!=0)
+    rec = np.divide(tp,tp+fn,out=np.zeros_like(tp,dtype=float),where=(tp+fn)!=0)
+    f1  = np.divide(2*prec*rec,prec+rec,out=np.zeros_like(tp,dtype=float),where=(prec+rec)!=0)
+    denom = np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+    mcc = np.divide(tp*tn-fp*fn,denom,out=np.zeros_like(tp,dtype=float),where=denom!=0)
+    bal = (rec + np.divide(tn,tn+fp,out=np.zeros_like(tp,dtype=float),where=(tn+fp)!=0))/2
+    return acc,prec,rec,f1,mcc,bal
 
-    • all divisions are protected with `np.divide(..., where=…)`
-      so no `RuntimeWarning: invalid value encountered in divide`
-    • returns six NumPy arrays (or scalars) in the order:
-        accuracy, precision, recall, f1, mcc, balanced_accuracy
-    """
-    n   = tp + fp + fn + tn
-
-    acc = (tp + tn) / n
-
-    prec = np.divide(tp, tp + fp,
-                     out=np.zeros_like(tp, dtype=float),
-                     where=(tp + fp) != 0)
-
-    rec  = np.divide(tp, tp + fn,
-                     out=np.zeros_like(tp, dtype=float),
-                     where=(tp + fn) != 0)
-
-    f1   = np.divide(2 * prec * rec, prec + rec,
-                     out=np.zeros_like(tp, dtype=float),
-                     where=(prec + rec) != 0)
-
-    # Matthews correlation coefficient
-    denom = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
-    mcc   = np.divide(tp * tn - fp * fn, denom,
-                      out=np.zeros_like(tp, dtype=float),
-                      where=denom != 0)
-
-    bal  = (rec + np.divide(tn, tn + fp,
-                             out=np.zeros_like(tp, dtype=float),
-                             where=(tn + fp) != 0)) / 2
-    return acc, prec, rec, f1, mcc, bal
-
-
-def bootstrap_and_perm(y_true, y_prob, thr,
-                       n_boot=N_BOOT, n_perm=N_PERM, alpha=0.05):
-    """
-    Fast, vectorised computation of point estimates, bootstrap CIs
-    and permutation p-values for
-
-        accuracy, precision, recall, F1, MCC, balanced_accuracy, ROC-AUC
-
-    Returns the same dict structure that the original `full_metrics()`
-    produced, but without any Python loops in the hot path and without
-    runtime / deprecation warnings.
-    """
+def bootstrap_and_perm(y_true,y_prob,thr,n_boot=N_BOOT,n_perm=N_PERM,alpha=0.05):
     rng    = np.random.default_rng(SEED)
-    y_true = np.asarray(y_true)
-    y_prob = np.asarray(y_prob)
-    y_pred = _to_pred(y_prob, thr)
+    y_true = np.asarray(y_true); y_prob=np.asarray(y_prob)
+    y_pred = (y_prob>=thr).astype(int)
 
-    # ── 1) observed values ----------------------------------------------------
-    obs_tp, obs_fp, obs_fn, obs_tn = _confusion_mtx(
-        y_true[np.newaxis, :], y_pred[np.newaxis, :])
-    obs_metrics = _metrics_from_conf(
-        obs_tp, obs_fp, obs_fn, obs_tn)
-    obs_metrics = [m.item() for m in obs_metrics]           # squeeze to scalars
-    obs_roc     = roc_auc_score(y_true, y_prob)
+    # observed
+    obs_tp,obs_fp,obs_fn,obs_tn=_confusion_mtx(y_true[np.newaxis,:],y_pred[np.newaxis,:])
+    obs_metrics=_metrics_from_conf(obs_tp,obs_fp,obs_fn,obs_tn)
+    obs_metrics=[m.item() for m in obs_metrics]
+    obs_roc = roc_auc_score(y_true,y_prob)
 
-    # ── 2) bootstrap CIs ------------------------------------------------------
-    boot_idx = rng.integers(0, len(y_true), size=(n_boot, len(y_true)))
-    tp, fp, fn, tn = _confusion_mtx(y_true[boot_idx], y_pred[boot_idx])
-    boot_metrics = _metrics_from_conf(tp, fp, fn, tn)       # tuple of arrays
+    # bootstrap
+    boot_idx=rng.integers(0,len(y_true),(n_boot,len(y_true)))
+    tp,fp,fn,tn=_confusion_mtx(y_true[boot_idx],y_pred[boot_idx])
+    boot_metrics=_metrics_from_conf(tp,fp,fn,tn)
+    ci_low=[np.percentile(b,100*alpha/2) for b in boot_metrics]
+    ci_high=[np.percentile(b,100*(1-alpha/2)) for b in boot_metrics]
+    roc_boot=[roc_auc_score(y_true[i],y_prob[i]) for i in boot_idx]
+    roc_ci_low,roc_ci_high=np.percentile(roc_boot,[100*alpha/2,100*(1-alpha/2)])
 
-    ci_low  = [np.percentile(b, 100 * alpha / 2) for b in boot_metrics]
-    ci_high = [np.percentile(b, 100 * (1 - alpha / 2)) for b in boot_metrics]
+    # permutation
+    perm_idx=np.argsort(rng.random((n_perm,len(y_true))),axis=1)
+    perm_y=y_true[perm_idx]
+    tp,fp,fn,tn=_confusion_mtx(perm_y,y_pred[np.newaxis,:])
+    perm_metrics=_metrics_from_conf(tp,fp,fn,tn)
+    p_vals=[((np.sum(p>=o)+1)/(n_perm+1)) for p,o in zip(perm_metrics,obs_metrics)]
+    roc_perm=[(roc_auc_score(py,y_prob) if np.unique(py).size==2 else -np.inf) for py in perm_y]
+    roc_p=(np.sum(np.array(roc_perm)>=obs_roc)+1)/(n_perm+1)
 
-    # ROC-AUC bootstrap (okay to loop; ~0.05 s for 2 000 reps)
-    roc_boot = [roc_auc_score(y_true[i], y_prob[i]) for i in boot_idx]
-    roc_ci_low, roc_ci_high = np.percentile(
-        roc_boot, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-
-    # ── 3) permutation p-values ----------------------------------------------
-    # generate n_perm independent permutations without Python loops
-    perm_idx = np.argsort(rng.random((n_perm, len(y_true))), axis=1)
-    perm_y   = y_true[perm_idx]
-
-    tp, fp, fn, tn = _confusion_mtx(perm_y, y_pred[np.newaxis, :])
-    perm_metrics = _metrics_from_conf(tp, fp, fn, tn)
-
-    p_vals = [((np.sum(p >= o) + 1) / (n_perm + 1))
-              for p, o in zip(perm_metrics, obs_metrics)]
-
-    # ROC-AUC permutation
-    roc_perm = [(roc_auc_score(py, y_prob)
-                 if np.unique(py).size == 2 else -np.inf)   # handle single-class
-                for py in perm_y]
-    roc_pval = (np.sum(np.array(roc_perm) >= obs_roc) + 1) / (n_perm + 1)
-
-    # ── 4) assemble output ----------------------------------------------------
-    names = ['accuracy', 'precision', 'recall',
-             'f1', 'mcc', 'balanced_accuracy']
-    out: Dict[str, Dict[str, float]] = {}
-    for n, s, lo, hi, p in zip(names, obs_metrics, ci_low, ci_high, p_vals):
-        out[n] = {'score':  float(s),
-                  'ci_low': float(lo),
-                  'ci_high':float(hi),
-                  'p':      float(p)}
-
-    out['roc_auc'] = {'score':  float(obs_roc),
-                      'ci_low': float(roc_ci_low),
-                      'ci_high':float(roc_ci_high),
-                      'p':      float(roc_pval)}
+    names=['accuracy','precision','recall','f1','mcc','balanced_accuracy']
+    out={}
+    for n,s,lo,hi,p in zip(names,obs_metrics,ci_low,ci_high,p_vals):
+        out[n]={'score':float(s),'ci_low':float(lo),'ci_high':float(hi),'p':float(p)}
+    out['roc_auc']={'score':float(obs_roc),'ci_low':float(roc_ci_low),
+                    'ci_high':float(roc_ci_high),'p':float(roc_p)}
     return out
-# -----------------------------------------------------------------------------
 
-
-def print_table(metrics_dict: Dict[str, Any], title: str) -> None:
-    print(f"\n{title} metrics:")
-    print("{:20s} {:>8s} {:>18s} {:>12s}".format("metric","score","95% CI","p-value"))
-    for k,v in metrics_dict.items():
-        print("{:20s} {:8.3f} [{:5.3f},{:5.3f}] {:12.4f}".format(
-            k, v['score'], v['ci_low'], v['ci_high'], v['p']))
-
-# ─────────────────────── Threshold optimisation helper ────────────────────────
-def best_f1_threshold(y_true, y_prob) -> float:
-    thrs = np.linspace(0.05, 0.95, 19)
-    f1s  = [f1_score(y_true, _to_pred(y_prob,t), zero_division=0) for t in thrs]
+def best_f1_threshold(y_true,y_prob):
+    thrs=np.linspace(0.05,0.95,19)
+    f1s =[f1_score(y_true,_to_pred(y_prob,t),zero_division=0) for t in thrs]
     return float(thrs[int(np.argmax(f1s))])
 
-# ───────────────────────────── Data & augmentation ────────────────────────────
-def build_transforms(img_size: int) -> Tuple[transforms.Compose, transforms.Compose]:
-    train_tf = transforms.Compose([
+# ─────────────────────────── loss options ────────────────────────────────
+class FocalLoss(nn.Module):
+    def __init__(self,gamma=2,alpha=None,reduction='mean'):
+        super().__init__()
+        self.gamma,self.alpha,self.reduction=gamma,alpha,reduction
+        self.ce=nn.CrossEntropyLoss(weight=alpha,reduction='none')
+    def forward(self,logits,targets):
+        ce=self.ce(logits,targets)
+        pt=torch.exp(-ce)
+        loss=(1-pt)**self.gamma*ce
+        return loss.mean() if self.reduction=='mean' else loss.sum()
+
+# ─────────────────────────── transforms / data ───────────────────────────
+def build_transforms(img_size:int):
+    train_tf=transforms.Compose([
         transforms.Resize(int(img_size*1.1)),
-        transforms.RandomResizedCrop(img_size, scale=(0.9,1.0)),
+        transforms.RandomResizedCrop(img_size,scale=(0.9,1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(10),
         transforms.ColorJitter(0.1,0.1,0.1,0.05),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],
-                             [0.229,0.224,0.225]),
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225]),
     ])
-    eval_tf = transforms.Compose([
+    eval_tf=transforms.Compose([
         transforms.Resize(int(img_size*1.1)),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],
-                             [0.229,0.224,0.225]),
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225]),
     ])
-    return train_tf, eval_tf
+    return train_tf,eval_tf
 
-def _seed_worker(worker_id: int) -> None:
-    """Make dataloader deterministic across workers."""
-    worker_seed = SEED + worker_id
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+def _seed_worker(wid):
+    np.random.seed(SEED+wid); random.seed(SEED+wid)
 
-def make_loader(root: str,
-                split: str,
-                tf: transforms.Compose,
-                batch_size: int,
-                balance: bool = False,
-                workers: int = 2,
-                prefetch: int = 1) -> Tuple[DataLoader, datasets.ImageFolder]:
-    """
-    Build a DataLoader with macOS-friendly defaults.
-    """
-    ds = datasets.ImageFolder(Path(root)/split, transform=tf)
+def _subset_targets(ds)->list[int]:
+    if hasattr(ds,'samples'):
+        return [y for _,y in ds.samples]
+    if isinstance(ds,Subset):
+        return [ds.dataset.samples[i][1] for i in ds.indices]
+    raise TypeError("Unsupported dataset type")
 
-    # Weighted sampling (only for train)
-    if balance and split == "train":
-        targets      = [s[1] for s in ds.samples]
-        class_counts = np.bincount(targets)
-        weights      = 1.0 / class_counts[targets]
-        sampler      = WeightedRandomSampler(weights,
-                                             num_samples=len(weights),
-                                             replacement=True)
-        shuffle = False
+def make_loader(dataset,split,tf,batch_size,balance,workers=2,prefetch=1)->DataLoader:
+    ds=copy.deepcopy(dataset)
+    if isinstance(ds,Subset): ds.dataset.transform=tf
+    else: ds.transform=tf
+
+    if balance and split=='train':
+        targets=_subset_targets(ds)
+        class_counts=np.bincount(targets)
+        weights=1.0/class_counts[targets]
+        sampler=WeightedRandomSampler(weights,len(weights),replacement=True)
+        shuffle=False
     else:
-        sampler = None
-        shuffle = (split == "train")
+        sampler=None; shuffle=(split=='train')
+    pin_mem=DEVICE.type=='cuda'
+    kwargs=dict(batch_size=batch_size,shuffle=shuffle,sampler=sampler,
+                num_workers=workers,worker_init_fn=_seed_worker,
+                pin_memory=pin_mem)
+    if workers>0: kwargs.update(prefetch_factor=prefetch,persistent_workers=True)
+    return DataLoader(ds,**kwargs)
 
-    # pin_memory only helps for CUDA
-    pin_mem = DEVICE.type == "cuda"
-
-    # prefetch & persistent_workers require num_workers > 0
-    loader_kwargs = dict(
-        batch_size        = batch_size,
-        shuffle           = shuffle,
-        sampler           = sampler,
-        num_workers       = workers,
-        worker_init_fn    = _seed_worker,
-        pin_memory        = pin_mem,
-    )
-    if workers > 0:
-        loader_kwargs.update(
-            prefetch_factor    = prefetch,
-            persistent_workers = True
-        )
-
-    loader = DataLoader(ds, **loader_kwargs)
-    return loader, ds
-
-# ─────────────────────────────── Model & loss ─────────────────────────────────
-def build_model(num_classes=2, pretrained=True) -> nn.Module:
-    weights = ResNet18_Weights.DEFAULT if pretrained else None
-    m = models.resnet18(weights=weights)
-    m.fc = nn.Linear(m.fc.in_features, num_classes)
-    nn.init.xavier_uniform_(m.fc.weight)
-    nn.init.zeros_(m.fc.bias)
+# ───────────────────────────── model utils ───────────────────────────────
+def build_model(num_classes=2,pretrained=True):
+    w=ResNet18_Weights.DEFAULT if pretrained else None
+    m=models.resnet18(weights=w)
+    m.fc=nn.Linear(m.fc.in_features,num_classes)
+    nn.init.xavier_uniform_(m.fc.weight); nn.init.zeros_(m.fc.bias)
     return m
 
-# ───────────────────────────── Train / Eval loops ─────────────────────────────
-def train_one_epoch(model: nn.Module, loader: DataLoader,
-                    criterion, optim, device: torch.device,
-                    scaler=None) -> float:
-    model.train()
-    running = 0.0
-    pbar = tqdm(loader, leave=False, desc="train")
-    for x,y in pbar:
-        x, y = x.to(device), y.to(device)
+def freeze_backbone(model:nn.Module,freeze:bool=True):
+    for n,p in model.named_parameters():
+        if not n.startswith('fc.'): p.requires_grad_(not freeze)
 
+# ───────────────────── temperature scaling helper ────────────────────────
+class _TempScaler(nn.Module):
+    def __init__(self): super().__init__(); self.temp=nn.Parameter(torch.ones([])*1.5)
+    def forward(self,logits): return logits/self.temp
+
+def temperature_scale(logits:torch.Tensor,labels:torch.Tensor)->float:
+    logits,labels=logits.to(DEVICE),labels.to(DEVICE)
+    scaler=_TempScaler().to(DEVICE)
+    nll=nn.CrossEntropyLoss()
+    optim=torch.optim.LBFGS([scaler.temp],lr=0.01,max_iter=50)
+    def _closure():
         optim.zero_grad()
+        loss=nll(scaler(logits),labels); loss.backward(); return loss
+    optim.step(_closure)
+    return scaler.temp.detach().cpu().item()
 
-        if scaler is None:        # CPU / MPS
-            out  = model(x)
-            loss = criterion(out, y)
-            loss.backward()
-            optim.step()
-        else:                     # CUDA mixed precision
-            with torch.cuda.amp.autocast():
-                out  = model(x)
-                loss = criterion(out, y)
-            scaler.scale(loss).backward()
-            scaler.step(optim)
-            scaler.update()
+# ───────────────────────────── dataset loader ────────────────────────────
+def load_internal_ds(root:Path)->datasets.ImageFolder:
+    if (root/'train_val').is_dir():
+        return datasets.ImageFolder(root/'train_val')
+    if (root/'train').is_dir() and (root/'val').is_dir():
+        ds_tr=datasets.ImageFolder(root/'train')
+        ds_va=datasets.ImageFolder(root/'val')
+        if ds_tr.class_to_idx!=ds_va.class_to_idx:
+            raise ValueError("Class mapping mismatch train vs val")
+        merged=copy.deepcopy(ds_tr)
+        merged.samples=ds_tr.samples+ds_va.samples
+        merged.imgs   =merged.samples
+        return merged
+    raise FileNotFoundError("Expected train_val/ or train/ + val/ inside data_root")
 
-        running += loss.item() * x.size(0)
+# ───────────────────────────── training loop ─────────────────────────────
+def train_one_epoch(model,loader,criterion,optim,epoch):
+    model.train(); running=0.0
+    pbar=tqdm(loader,leave=False,desc=f"train(e{epoch})")
+    for x,y in pbar:
+        x,y=x.to(DEVICE),y.to(DEVICE)
+        optim.zero_grad()
+        loss=criterion(model(x),y)
+        loss.backward(); optim.step()
+        running+=loss.item()*x.size(0)
         pbar.set_postfix(loss=loss.item())
-
-    return running / len(loader.dataset)
+    return running/len(loader.dataset)
 
 @torch.no_grad()
-def inference(model: nn.Module, loader: DataLoader,
-              device: torch.device) -> Tuple[np.ndarray, np.ndarray]:
-    model.eval()
-    y_true, y_prob = [], []
+def inference(model,loader):
+    model.eval(); ys,ps=[],[]
     for x,y in loader:
-        x = x.to(device)
-        with torch.cuda.amp.autocast(enabled=False):  # no AMP for eval on CPU/MPS
-            logits = model(x)
-        prob = torch.softmax(logits, 1)[:,1]
-        y_true.append(y.cpu().numpy())
-        y_prob.append(prob.cpu().numpy())
-    return np.concatenate(y_true), np.concatenate(y_prob)
+        x=x.to(DEVICE)
+        logits=model(x)
+        prob=torch.softmax(logits,1)[:,1]
+        ys.append(y.numpy()); ps.append(prob.cpu().numpy())
+    return np.concatenate(ys),np.concatenate(ps)
 
-# ─────────────────────────────────── Main ─────────────────────────────────────
-def main(args: argparse.Namespace) -> None:
-    tf_train, tf_eval = build_transforms(args.img_size)
+# ─────────────────────── single-fold routine ─────────────────────────────
+def run_fold(fold:int,idx_tr:list[int],idx_v:list[int],full_ds,args)->tuple[float,float]:
+    tf_train,tf_eval=build_transforms(args.img_size)
+    tr_set,va_set=Subset(full_ds,idx_tr),Subset(full_ds,idx_v)
+    tr_loader=make_loader(tr_set,'train',tf_train,args.batch_size,True)
+    va_loader=make_loader(va_set,'val',tf_eval,args.batch_size,False)
 
-    train_loader, train_ds = make_loader(args.data_root, 'train', tf_train,
-                                         args.batch_size, balance=True)
-    val_loader,   _        = make_loader(args.data_root, 'val',
-                                         tf_eval,  args.batch_size)
-    ext_loader,   _        = make_loader(args.data_root, 'external_val',
-                                         tf_eval,  args.batch_size)
+    # weighted loss
+    targets=[full_ds.samples[i][1] for i in idx_tr]
+    cw=1./torch.tensor(np.bincount(targets),dtype=torch.float32).to(DEVICE)
+    criterion=FocalLoss(gamma=2,alpha=cw) if args.focal else nn.CrossEntropyLoss(weight=cw)
 
-    # class-weighted CE
-    train_targets = np.array([y for _,y in train_ds.samples])
-    class_counts  = np.bincount(train_targets)
-    class_weights = 1. / torch.tensor(class_counts, dtype=torch.float32)
-    criterion = nn.CrossEntropyLoss(weight=class_weights.to(DEVICE))
+    model=build_model(pretrained=not args.no_pretrain).to(DEVICE)
+    freeze_backbone(model,True)
 
-    model = build_model(pretrained=not args.no_pretrain).to(DEVICE)
+    head=[p for n,p in model.named_parameters() if n.startswith('fc.')]
+    base=[p for n,p in model.named_parameters() if not n.startswith('fc.')]
+    optim=torch.optim.AdamW([{'params':head,'lr':LR_HEAD},
+                             {'params':base,'lr':LR_BACKBONE}],
+                            weight_decay=WEIGHT_DECAY)
 
-    # Optional torch.compile (PyTorch ≥ 2.0, helps CPU/MPS)
-    if args.torch_compile and hasattr(torch, "compile"):
-        model = torch.compile(model, mode="reduce-overhead")
-
-    optim  = torch.optim.AdamW(model.parameters(),
-                               lr=args.lr, weight_decay=args.weight_decay)
-    scaler = torch.cuda.amp.GradScaler() if DEVICE.type == "cuda" else None
-
-    best_val_f1, best_thr, epochs_no_improve = 0.0, 0.5, 0
-    history = []
-
-    for epoch in range(args.epochs):
-        t0 = time.time()
-        train_loss = train_one_epoch(model, train_loader,
-                                     criterion, optim, DEVICE, scaler)
-
-        # ───────── Validation
-        y_val, p_val = inference(model, val_loader, DEVICE)
-        best_thr     = best_f1_threshold(y_val, p_val)
-        val_metrics  = bootstrap_and_perm(y_val, p_val, best_thr)
-
-        # ───────── External
-        y_ext, p_ext = inference(model, ext_loader, DEVICE)
-        ext_metrics  = bootstrap_and_perm(y_ext, p_ext, best_thr)
-
-        # ───────── Checkpointing
-        current_f1 = val_metrics['f1']['score']
-        if current_f1 > best_val_f1:
-            best_val_f1 = current_f1
-            torch.save({'state_dict': model.state_dict(),
-                        'thr'       : best_thr},
-                       'best_model.pt')
-            epochs_no_improve = 0
+    best_f1, no_imp, best_wts = 0.0, 0, None
+    for epoch in range(EPOCHS):
+        if epoch==FROZEN_EPOCHS: freeze_backbone(model,False)
+        train_one_epoch(model,tr_loader,criterion,optim,epoch)
+        y_val,p_val=inference(model,va_loader)
+        f1_now=f1_score(y_val,_to_pred(p_val,0.5),zero_division=0)
+        if f1_now>best_f1:
+            best_f1, best_wts, no_imp = f1_now, copy.deepcopy(model.state_dict()),0
         else:
-            epochs_no_improve += 1
+            no_imp+=1
+        if no_imp>=PATIENCE:
+            print(f"Fold {fold} – early stop at epoch {epoch+1}"); break
 
-        # ───────── Logging
-        row = {'epoch':epoch, 'train_loss':train_loss, 'thr':best_thr}
-        for k,v in val_metrics.items(): row[f'val_{k}'] = v['score']
-        for k,v in ext_metrics.items(): row[f'ext_{k}'] = v['score']
-        history.append(row)
-        pd.DataFrame(history).to_csv('training_log.csv', index=False)
+    model.load_state_dict(best_wts)
 
-        print(f"\nEpoch {epoch+1:02d}/{args.epochs} | "
-              f"train-loss {train_loss:.4f} | thr={best_thr:.2f} | "
-              f"time {time.time()-t0:5.1f}s")
-        print_table(val_metrics,  "   VAL")
-        print_table(ext_metrics, "EXTERNAL")
+    # logits collection for calibration
+    logits_val,y_val=[],[]
+    model.eval()
+    with torch.no_grad():
+        for x,y in va_loader:
+            logits_val.append(model(x.to(DEVICE)).cpu())
+            y_val.append(y.numpy())
+    logits_val=torch.cat(logits_val); y_val=np.concatenate(y_val)
 
-        # ───────── Early-stopping (optional)
-        if EARLY_STOP and epochs_no_improve >= EARLY_STOP:
-            print(f"\nEarly stop after {epoch+1} epochs "
-                  f"(no F1 gain for {EARLY_STOP} epochs).")
-            break
+    temp_value=1.0
+    if args.calibrate:
+        temp_value=temperature_scale(logits_val,torch.tensor(y_val))
+        print(f"Fold {fold}: temperature = {temp_value:.2f}")
 
-    print("\nFinished. Best F1 (val):", best_val_f1,
-          " | best model saved to best_model.pt")
+    p_val=torch.softmax(logits_val/temp_value,1)[:,1].numpy()
+    best_thr=best_f1_threshold(y_val,p_val)
 
-# ───────────────────────────────── CLI ────────────────────────────────────────
-def parse_args() -> argparse.Namespace:
-    formatter = argparse.ArgumentDefaultsHelpFormatter
-    ap = argparse.ArgumentParser(formatter_class=formatter)
-    ap.add_argument('--data_root', default='.', type=str,
-                    help='Root folder with train / val / external_val dirs')
-    ap.add_argument('--epochs', default=EPOCHS, type=int)
-    ap.add_argument('--batch_size', default=BATCH_SIZE, type=int)
-    ap.add_argument('--img_size',  default=IMG_SIZE, type=int)
-    ap.add_argument('--lr',        default=LR, type=float)
-    ap.add_argument('--weight_decay', default=WEIGHT_DECAY, type=float)
-    ap.add_argument('--no_pretrain', action='store_true',
-                    help='Start from random weights instead of ImageNet')
-    ap.add_argument('--torch_compile', action='store_true',
-                    help='Use torch.compile (PyTorch >=2.0)')
+    torch.save({'state_dict':model.state_dict(),
+                'temp':temp_value,
+                'thr':best_thr},
+               f"best_fold{fold}.pt")
+    print(f"Fold {fold}: best-F1={best_f1:.3f}, thr={best_thr:.2f}")
+    return best_f1,best_thr
+
+# ───────────────────────────────── Main ──────────────────────────────────
+def main(args):
+    root=Path(args.data_root)
+    full_ds=load_internal_ds(root)
+    y_full=np.array([y for _,y in full_ds.samples])
+    skf=StratifiedKFold(n_splits=N_FOLDS,shuffle=True,random_state=SEED)
+
+    fold_thrs,fold_f1s=[],[]
+    for f,(tr,va) in enumerate(skf.split(np.zeros(len(y_full)),y_full)):
+        f1,thr=run_fold(f,list(tr),list(va),full_ds,args)
+        fold_f1s.append(f1); fold_thrs.append(thr)
+
+    median_thr=float(np.median(fold_thrs))
+    print("\nCV done. Fold F1s:",[f"{x:.3f}" for x in fold_f1s])
+    print("Median threshold =",median_thr)
+
+    # external evaluation
+    tf_eval=build_transforms(args.img_size)[1]
+    ext_ds=datasets.ImageFolder(root/'external_val',transform=tf_eval)
+    ext_loader=make_loader(ext_ds,'ext',tf_eval,args.batch_size,False)
+
+    prob_agg,y_ext=[],None
+    for f in range(N_FOLDS):
+        ckpt=torch.load(f"best_fold{f}.pt",map_location=DEVICE)
+        temp=ckpt.get('temp',1.0)
+        model=build_model(pretrained=False).to(DEVICE)
+        model.load_state_dict(ckpt['state_dict']); model.eval()
+
+        ps_fold,ys=[],[]
+        with torch.no_grad():
+            for x,y in ext_loader:
+                logits=model(x.to(DEVICE))/temp
+                prob=torch.softmax(logits,1)[:,1]
+                ps_fold.append(prob.cpu().numpy())
+                ys.append(y.numpy())
+        prob_agg.append(np.concatenate(ps_fold))
+        if y_ext is None: y_ext=np.concatenate(ys)
+
+    p_ext=np.mean(prob_agg,axis=0)
+    ext_metrics=bootstrap_and_perm(y_ext,p_ext,median_thr)
+    print("\nExternal-test metrics (median thr = %.2f)"%median_thr)
+    for k,v in ext_metrics.items():
+        print(f"{k:20s} {v['score']:.3f} "
+              f"[{v['ci_low']:.3f},{v['ci_high']:.3f}]  p={v['p']:.4f}")
+
+# ───────────────────────────── CLI parsing ───────────────────────────────
+def parse_args():
+    ap=argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ap.add_argument('--data_root',default='.',type=str)
+    ap.add_argument('--batch_size',default=BATCH_SIZE,type=int)
+    ap.add_argument('--img_size',default=IMG_SIZE,type=int)
+    ap.add_argument('--no_pretrain',action='store_true')
+    ap.add_argument('--focal',action='store_true',help='Use focal loss')
+    ap.add_argument('--calibrate',action='store_true',help='Temperature scaling')
     return ap.parse_args()
 
-if __name__ == "__main__":
-    # Silence torchvision / sklearn deprecation noise
-    warnings.filterwarnings("ignore", category=UserWarning)
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    args = parse_args()
-    main(args)
+# ──────────────────────────────────────────────────────────────────────────
+if __name__=='__main__':
+    warnings.filterwarnings("ignore",category=UserWarning)
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    main(parse_args())
