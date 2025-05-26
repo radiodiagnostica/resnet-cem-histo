@@ -85,86 +85,114 @@ def _confusion_mtx(y_true, y_pred):
     tn = np.sum((y_true == 0) & (y_pred == 0), axis=1)
     return tp, fp, fn, tn
 
+# ────────────────────── vectorised metrics (warning-free) ─────────────────────
 def _metrics_from_conf(tp, fp, fn, tn):
-    n  = tp + fp + fn + tn
+    """
+    Compute confusion-matrix metrics from TP / FP / FN / TN vectors
+    (works with scalars or 1-D NumPy arrays).
+
+    • all divisions are protected with `np.divide(..., where=…)`
+      so no `RuntimeWarning: invalid value encountered in divide`
+    • returns six NumPy arrays (or scalars) in the order:
+        accuracy, precision, recall, f1, mcc, balanced_accuracy
+    """
+    n   = tp + fp + fn + tn
+
     acc = (tp + tn) / n
 
-    prec = np.divide(tp, tp + fp, out=np.zeros_like(tp, dtype=float),
+    prec = np.divide(tp, tp + fp,
+                     out=np.zeros_like(tp, dtype=float),
                      where=(tp + fp) != 0)
-    rec  = np.divide(tp, tp + fn, out=np.zeros_like(tp, dtype=float),
+
+    rec  = np.divide(tp, tp + fn,
+                     out=np.zeros_like(tp, dtype=float),
                      where=(tp + fn) != 0)
 
-    f1   = np.divide(2*prec*rec, prec + rec,
+    f1   = np.divide(2 * prec * rec, prec + rec,
                      out=np.zeros_like(tp, dtype=float),
                      where=(prec + rec) != 0)
 
-    mcc  = ((tp*tn - fp*fn) /
-            np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)))
+    # Matthews correlation coefficient
+    denom = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    mcc   = np.divide(tp * tn - fp * fn, denom,
+                      out=np.zeros_like(tp, dtype=float),
+                      where=denom != 0)
+
     bal  = (rec + np.divide(tn, tn + fp,
                              out=np.zeros_like(tp, dtype=float),
                              where=(tn + fp) != 0)) / 2
     return acc, prec, rec, f1, mcc, bal
 
+
 def bootstrap_and_perm(y_true, y_prob, thr,
-                       n_boot=N_BOOT, n_perm=N_PERM, alpha=.05):
+                       n_boot=N_BOOT, n_perm=N_PERM, alpha=0.05):
     """
-    Computes (point estimate, 95 % BCa-like bootstrap CI, permutation p-value)
-    for accuracy, precision, recall, F1, MCC, balanced-accuracy and ROC-AUC
-    in a *single* vectorised call.
+    Fast, vectorised computation of point estimates, bootstrap CIs
+    and permutation p-values for
 
-    Returns a dict identical to the former `full_metrics()`.
+        accuracy, precision, recall, F1, MCC, balanced_accuracy, ROC-AUC
+
+    Returns the same dict structure that the original `full_metrics()`
+    produced, but without any Python loops in the hot path and without
+    runtime / deprecation warnings.
     """
-    rng      = np.random.default_rng(SEED)
-    y_true   = np.asarray(y_true)
-    y_prob   = np.asarray(y_prob)
-    y_pred   = _to_pred(y_prob, thr)
+    rng    = np.random.default_rng(SEED)
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob)
+    y_pred = _to_pred(y_prob, thr)
 
-    # ── observed values
+    # ── 1) observed values ----------------------------------------------------
     obs_tp, obs_fp, obs_fn, obs_tn = _confusion_mtx(
         y_true[np.newaxis, :], y_pred[np.newaxis, :])
-    obs = _metrics_from_conf(obs_tp, obs_fp, obs_fn, obs_tn)
-    roc_obs = roc_auc_score(y_true, y_prob)
+    obs_metrics = _metrics_from_conf(
+        obs_tp, obs_fp, obs_fn, obs_tn)
+    obs_metrics = [m.item() for m in obs_metrics]           # squeeze to scalars
+    obs_roc     = roc_auc_score(y_true, y_prob)
 
-    # ── bootstrap (vectorised)
-    idx_boot = rng.integers(0, len(y_true), size=(n_boot, len(y_true)))
-    tp, fp, fn, tn = _confusion_mtx(y_true[idx_boot], y_pred[idx_boot])
-    boot = _metrics_from_conf(tp, fp, fn, tn)
-    ci_low  = [np.percentile(b, 100*alpha/2)   for b in boot]
-    ci_high = [np.percentile(b, 100*(1-alpha/2)) for b in boot]
+    # ── 2) bootstrap CIs ------------------------------------------------------
+    boot_idx = rng.integers(0, len(y_true), size=(n_boot, len(y_true)))
+    tp, fp, fn, tn = _confusion_mtx(y_true[boot_idx], y_pred[boot_idx])
+    boot_metrics = _metrics_from_conf(tp, fp, fn, tn)       # tuple of arrays
 
-    # ROC-AUC bootstrap (loop is OK – ≤0.1 s for 2 000 reps)
-    roc_boot = [roc_auc_score(y_true[i], y_prob[i])
-                for i in idx_boot]
+    ci_low  = [np.percentile(b, 100 * alpha / 2) for b in boot_metrics]
+    ci_high = [np.percentile(b, 100 * (1 - alpha / 2)) for b in boot_metrics]
+
+    # ROC-AUC bootstrap (okay to loop; ~0.05 s for 2 000 reps)
+    roc_boot = [roc_auc_score(y_true[i], y_prob[i]) for i in boot_idx]
     roc_ci_low, roc_ci_high = np.percentile(
-        roc_boot, [100*alpha/2, 100*(1-alpha/2)])
+        roc_boot, [100 * alpha / 2, 100 * (1 - alpha / 2)])
 
-    # ── permutation (vectorised for confusion-matrix metrics)
-    # create n_perm independent permutations without Python loops
-    perm_indices = np.argsort(rng.random((n_perm, len(y_true))), axis=1)
-    perm_y       = y_true[perm_indices]
+    # ── 3) permutation p-values ----------------------------------------------
+    # generate n_perm independent permutations without Python loops
+    perm_idx = np.argsort(rng.random((n_perm, len(y_true))), axis=1)
+    perm_y   = y_true[perm_idx]
+
     tp, fp, fn, tn = _confusion_mtx(perm_y, y_pred[np.newaxis, :])
-    perm = _metrics_from_conf(tp, fp, fn, tn)
-    pvals = [(np.sum(p >= o) + 1) / (n_perm + 1)
-             for p, o in zip(perm, obs)]
+    perm_metrics = _metrics_from_conf(tp, fp, fn, tn)
 
-    # ROC-AUC permutation (loop)
-    roc_perm = [(roc_auc_score(py, y_prob) if len(np.unique(py)) == 2 else -np.inf)
+    p_vals = [((np.sum(p >= o) + 1) / (n_perm + 1))
+              for p, o in zip(perm_metrics, obs_metrics)]
+
+    # ROC-AUC permutation
+    roc_perm = [(roc_auc_score(py, y_prob)
+                 if np.unique(py).size == 2 else -np.inf)   # handle single-class
                 for py in perm_y]
-    roc_pval = (np.sum(np.array(roc_perm) >= roc_obs) + 1) / (n_perm + 1)
+    roc_pval = (np.sum(np.array(roc_perm) >= obs_roc) + 1) / (n_perm + 1)
 
-    # ── assemble
+    # ── 4) assemble output ----------------------------------------------------
     names = ['accuracy', 'precision', 'recall',
              'f1', 'mcc', 'balanced_accuracy']
     out: Dict[str, Dict[str, float]] = {}
-    for n, s, lo, hi, p in zip(names, obs, ci_low, ci_high, pvals):
-        out[n] = {'score': float(s),
+    for n, s, lo, hi, p in zip(names, obs_metrics, ci_low, ci_high, p_vals):
+        out[n] = {'score':  float(s),
                   'ci_low': float(lo),
-                  'ci_high': float(hi),
-                  'p': float(p)}
-    out['roc_auc'] = {'score': float(roc_obs),
+                  'ci_high':float(hi),
+                  'p':      float(p)}
+
+    out['roc_auc'] = {'score':  float(obs_roc),
                       'ci_low': float(roc_ci_low),
-                      'ci_high': float(roc_ci_high),
-                      'p': float(roc_pval)}
+                      'ci_high':float(roc_ci_high),
+                      'p':      float(roc_pval)}
     return out
 # -----------------------------------------------------------------------------
 
