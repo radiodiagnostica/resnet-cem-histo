@@ -2,17 +2,18 @@
 """
 Hormone-receptor (+/–) classification on cropped mammograms
 ────────────────────────────────────────────────────────────
-Patient-level split, proper class-imbalance handling, bootstrap CIs,
-permutation p-values and data-driven threshold tuning.
+The data-loader now guarantees that
 
-This version contains a new *fully-vectorised* implementation of the
-metric / statistics block that is typically >10× faster than the
-original (no Python loops in the hot path).
+    folder “1”  -> class-index 1 (HR-positive)
+    folder “2”  -> class-index 0 (HR-negative)
+
+regardless of the alphabetical ordering used by
+`torchvision.datasets.ImageFolder`.
 
 Directory layout (unchanged):
 
 data_root/
- ├── train/         (sub-folders 0, 1)
+ ├── train/         (sub-folders 1, 2)
  ├── val/
  └── external_val/
 """
@@ -72,11 +73,33 @@ print(f"Running on device: {DEVICE}")
 if DEVICE.type == "mps":
     torch.set_float32_matmul_precision('high')
 
+# ──────────────────────────── Label-remapping Dataset ─────────────────────────
+class HRDataset(datasets.ImageFolder):
+    """
+    ImageFolder with a hardcoded mapping that forces
+
+        folder '1' -> class 1 (positive)
+        folder '2' -> class 0 (negative)
+
+    Independent of the order given by ImageFolder.
+    """
+    def __init__(self, root: str, transform=None):
+        super().__init__(root, transform=transform)
+        # original mapping (alphabetical): {'1':0, '2':1}
+        # we want {'1':1, '2':0}
+        new_samples = []
+        for fp, lbl in self.samples:
+            new_lbl = 1 - lbl          # 0→1, 1→0
+            new_samples.append((fp, new_lbl))
+        self.samples = new_samples
+        self.targets = [lbl for _, lbl in self.samples]
+        self.class_to_idx = {'2':0, '1':1}   # for completeness
+
 # ───────────────────────── Metric & statistics utilities ──────────────────────
 def _to_pred(y_prob: np.ndarray, thr: float) -> np.ndarray:
     return (y_prob >= thr).astype(int)
 
-# ----------  fast, fully-vectorised bootstrap & permutation  -----------------
+# ----------  fast, fully-vectorised bootstrap & permutation  ------------------
 def _confusion_mtx(y_true, y_pred):
     """Return TP, FP, FN, TN for *each row* of the 2-D input arrays."""
     tp = np.sum((y_true == 1) & (y_pred == 1), axis=1)
@@ -85,57 +108,25 @@ def _confusion_mtx(y_true, y_pred):
     tn = np.sum((y_true == 0) & (y_pred == 0), axis=1)
     return tp, fp, fn, tn
 
-# ────────────────────── vectorised metrics (warning-free) ─────────────────────
 def _metrics_from_conf(tp, fp, fn, tn):
-    """
-    Compute confusion-matrix metrics from TP / FP / FN / TN vectors
-    (works with scalars or 1-D NumPy arrays).
-
-    • all divisions are protected with `np.divide(..., where=…)`
-      so no `RuntimeWarning: invalid value encountered in divide`
-    • returns six NumPy arrays (or scalars) in the order:
-        accuracy, precision, recall, f1, mcc, balanced_accuracy
-    """
     n   = tp + fp + fn + tn
-
     acc = (tp + tn) / n
-
-    prec = np.divide(tp, tp + fp,
-                     out=np.zeros_like(tp, dtype=float),
+    prec = np.divide(tp, tp + fp, out=np.zeros_like(tp, dtype=float),
                      where=(tp + fp) != 0)
-
-    rec  = np.divide(tp, tp + fn,
-                     out=np.zeros_like(tp, dtype=float),
+    rec  = np.divide(tp, tp + fn, out=np.zeros_like(tp, dtype=float),
                      where=(tp + fn) != 0)
-
-    f1   = np.divide(2 * prec * rec, prec + rec,
-                     out=np.zeros_like(tp, dtype=float),
+    f1   = np.divide(2 * prec * rec, prec + rec, out=np.zeros_like(tp, dtype=float),
                      where=(prec + rec) != 0)
-
-    # Matthews correlation coefficient
     denom = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
     mcc   = np.divide(tp * tn - fp * fn, denom,
-                      out=np.zeros_like(tp, dtype=float),
-                      where=denom != 0)
-
+                      out=np.zeros_like(tp, dtype=float), where=denom != 0)
     bal  = (rec + np.divide(tn, tn + fp,
                              out=np.zeros_like(tp, dtype=float),
                              where=(tn + fp) != 0)) / 2
     return acc, prec, rec, f1, mcc, bal
 
-
 def bootstrap_and_perm(y_true, y_prob, thr,
                        n_boot=N_BOOT, n_perm=N_PERM, alpha=0.05):
-    """
-    Fast, vectorised computation of point estimates, bootstrap CIs
-    and permutation p-values for
-
-        accuracy, precision, recall, F1, MCC, balanced_accuracy, ROC-AUC
-
-    Returns the same dict structure that the original `full_metrics()`
-    produced, but without any Python loops in the hot path and without
-    runtime / deprecation warnings.
-    """
     rng    = np.random.default_rng(SEED)
     y_true = np.asarray(y_true)
     y_prob = np.asarray(y_prob)
@@ -152,18 +143,16 @@ def bootstrap_and_perm(y_true, y_prob, thr,
     # ── 2) bootstrap CIs ------------------------------------------------------
     boot_idx = rng.integers(0, len(y_true), size=(n_boot, len(y_true)))
     tp, fp, fn, tn = _confusion_mtx(y_true[boot_idx], y_pred[boot_idx])
-    boot_metrics = _metrics_from_conf(tp, fp, fn, tn)       # tuple of arrays
+    boot_metrics = _metrics_from_conf(tp, fp, fn, tn)
 
     ci_low  = [np.percentile(b, 100 * alpha / 2) for b in boot_metrics]
     ci_high = [np.percentile(b, 100 * (1 - alpha / 2)) for b in boot_metrics]
 
-    # ROC-AUC bootstrap (okay to loop; ~0.05 s for 2 000 reps)
     roc_boot = [roc_auc_score(y_true[i], y_prob[i]) for i in boot_idx]
     roc_ci_low, roc_ci_high = np.percentile(
         roc_boot, [100 * alpha / 2, 100 * (1 - alpha / 2)])
 
     # ── 3) permutation p-values ----------------------------------------------
-    # generate n_perm independent permutations without Python loops
     perm_idx = np.argsort(rng.random((n_perm, len(y_true))), axis=1)
     perm_y   = y_true[perm_idx]
 
@@ -173,13 +162,11 @@ def bootstrap_and_perm(y_true, y_prob, thr,
     p_vals = [((np.sum(p >= o) + 1) / (n_perm + 1))
               for p, o in zip(perm_metrics, obs_metrics)]
 
-    # ROC-AUC permutation
     roc_perm = [(roc_auc_score(py, y_prob)
-                 if np.unique(py).size == 2 else -np.inf)   # handle single-class
+                 if np.unique(py).size == 2 else -np.inf)
                 for py in perm_y]
     roc_pval = (np.sum(np.array(roc_perm) >= obs_roc) + 1) / (n_perm + 1)
 
-    # ── 4) assemble output ----------------------------------------------------
     names = ['accuracy', 'precision', 'recall',
              'f1', 'mcc', 'balanced_accuracy']
     out: Dict[str, Dict[str, float]] = {}
@@ -232,7 +219,6 @@ def build_transforms(img_size: int) -> Tuple[transforms.Compose, transforms.Comp
     return train_tf, eval_tf
 
 def _seed_worker(worker_id: int) -> None:
-    """Make dataloader deterministic across workers."""
     worker_seed = SEED + worker_id
     np.random.seed(worker_seed)
     random.seed(worker_seed)
@@ -243,15 +229,15 @@ def make_loader(root: str,
                 batch_size: int,
                 balance: bool = False,
                 workers: int = 2,
-                prefetch: int = 1) -> Tuple[DataLoader, datasets.ImageFolder]:
+                prefetch: int = 1) -> Tuple[DataLoader, HRDataset]:
     """
-    Build a DataLoader with macOS-friendly defaults.
+    Build a DataLoader with the HR-specific label-remapping dataset.
     """
-    ds = datasets.ImageFolder(Path(root)/split, transform=tf)
+    ds = HRDataset(Path(root)/split, transform=tf)
 
     # Weighted sampling (only for train)
     if balance and split == "train":
-        targets      = [s[1] for s in ds.samples]
+        targets      = ds.targets
         class_counts = np.bincount(targets)
         weights      = 1.0 / class_counts[targets]
         sampler      = WeightedRandomSampler(weights,
@@ -262,10 +248,8 @@ def make_loader(root: str,
         sampler = None
         shuffle = (split == "train")
 
-    # pin_memory only helps for CUDA
     pin_mem = DEVICE.type == "cuda"
 
-    # prefetch & persistent_workers require num_workers > 0
     loader_kwargs = dict(
         batch_size        = batch_size,
         shuffle           = shuffle,
@@ -331,7 +315,7 @@ def inference(model: nn.Module, loader: DataLoader,
         x = x.to(device)
         with torch.cuda.amp.autocast(enabled=False):  # no AMP for eval on CPU/MPS
             logits = model(x)
-        prob = torch.softmax(logits, 1)[:,1]
+        prob = torch.softmax(logits, 1)[:,1]    # index-1 = HR-positive
         y_true.append(y.cpu().numpy())
         y_prob.append(prob.cpu().numpy())
     return np.concatenate(y_true), np.concatenate(y_prob)
@@ -348,7 +332,7 @@ def main(args: argparse.Namespace) -> None:
                                          tf_eval,  args.batch_size)
 
     # class-weighted CE
-    train_targets = np.array([y for _,y in train_ds.samples])
+    train_targets = np.array(train_ds.targets)
     class_counts  = np.bincount(train_targets)
     class_weights = 1. / torch.tensor(class_counts, dtype=torch.float32)
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(DEVICE))
@@ -431,7 +415,6 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 if __name__ == "__main__":
-    # Silence torchvision / sklearn deprecation noise
     warnings.filterwarnings("ignore", category=UserWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
     args = parse_args()
