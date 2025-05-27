@@ -200,46 +200,97 @@ def train_fold(fid,train_s,val_s,tf_tr,tf_ev,args):
     print_table(val_metrics,f"VAL fold {fid}")
     return best_auc,best_thr,val_metrics
 
-# ════════════════════ 5.  Main ════════════════════════════════
-def main(a):
-    tf_tr,tf_ev=build_tf(a.img_size)
+# ──────────────────────────────────────────────────────────────
+#  NEW  main()  –  uses OOF predictions for a global threshold
+# ──────────────────────────────────────────────────────────────
+def main(args):
+    tf_train, tf_eval = build_tf(args.img_size)
 
-    # gather internal samples (train+val)
-    sam_int=[]
-    for sp in("train","val"):
-        ds=datasets.ImageFolder(Path(a.data_root)/sp)
-        sam_int+=ds.samples
-    paths=np.array([p for p,_ in sam_int])
-    lbls =np.array([l for _,l in sam_int])
-    grps =np.array([get_pid(Path(p)) for p in paths])
+    # 1) collect *all* internal samples (train + val directories)
+    samples_int: list[tuple[str, int]] = []
+    for split in ("train", "val"):
+        ds = datasets.ImageFolder(Path(args.data_root) / split)
+        samples_int += ds.samples
 
-    cv=StratifiedGroupKFold(n_splits=a.n_folds,shuffle=True,random_state=SEED)
-    fold_info=[]; thrs=[]
-    for fid,(tr,va) in enumerate(cv.split(paths,lbls,grps),1):
-        auc,thr,metr=train_fold(fid,[sam_int[i] for i in tr],[sam_int[i] for i in va],
-                                tf_tr,tf_ev,a)
-        fold_info.append((auc,metr)); thrs.append(thr)
+    paths = np.array([p for p, _ in samples_int])
+    labels = np.array([l for _, l in samples_int])
+    groups = np.array([get_pid(Path(p)) for p in paths])
 
-    # ---------- external set
-    ext_ds=datasets.ImageFolder(Path(a.data_root)/"external_val",tf_ev)
-    ext_loader=DataLoader(ext_ds,batch_size=a.batch_size,shuffle=False,
-                          num_workers=2,pin_memory=DEVICE.type=="cuda")
-    probs=[]
-    for fid in range(1,a.n_folds+1):
-        ck=torch.load(f"best_fold{fid}.pt",map_location=DEVICE)
-        m=build_model(False).to(DEVICE); m.load_state_dict(ck['state_dict'])
-        _,p=infer(m,ext_loader); probs.append(p)
-    p_mean=np.mean(probs,0); y_ext=np.array([l for _,l in ext_ds.samples])
-    ext_thr=float(np.median(thrs))          # aggregation of fold thresholds
-    ext_metrics=bootstrap_and_perm(y_ext,p_mean,ext_thr)
+    cv = StratifiedGroupKFold(
+        n_splits=args.n_folds, shuffle=True, random_state=SEED
+    )
 
-    # ---------- report
-    print("\n═════════ CV summary ═════════")
-    
-    for i,(auc,_) in enumerate(fold_info,1): print(f"fold {i}: VAL ROC-AUC = {auc:.3f}")
-    
-    print(f"CV mean±std ROC-AUC: {np.mean([a for a,_ in fold_info]):.3f} ± {np.std([a for a,_ in fold_info]):.3f}")
-    print_table(ext_metrics,"EXTERNAL (ensemble)")
+    fold_aucs, oof_y, oof_p = [], [], []          # ← will hold out-of-fold preds
+
+    for fold_id, (tr_idx, va_idx) in enumerate(
+        cv.split(paths, labels, groups), 1
+    ):
+        tr_samples = [samples_int[i] for i in tr_idx]
+        va_samples = [samples_int[i] for i in va_idx]
+
+        # ----- train this fold ------------------------------------------------
+        auc, _, _ = train_fold(
+            fold_id, tr_samples, va_samples,
+            tf_train, tf_eval, args
+        )
+        fold_aucs.append(auc)
+
+        # ----- generate OOF predictions with the *saved* best model ----------
+        # inside the for-fold loop (build the VAL DataLoader)
+        va_loader = make_loader(
+            va_samples,          # samples
+            tf_eval,             # transform
+            args.batch_size,     # batch
+            False,               # balance
+            False                # train  (was: train_split=False)
+        )
+        ckpt = torch.load(f"best_fold{fold_id}.pt", map_location=DEVICE)
+        model = build_model(pretrained=False).to(DEVICE)
+        model.load_state_dict(ckpt["state_dict"])
+        y_val, p_val = infer(model, va_loader)
+        oof_y.append(y_val)
+        oof_p.append(p_val)
+
+    # 2) concatenate all OOF predictions and pick ONE global threshold
+    oof_y = np.concatenate(oof_y)
+    oof_p = np.concatenate(oof_p)
+    global_thr = best_f1_threshold(oof_y, oof_p)
+    print(f"\nGlobal threshold from OOF optimisation: {global_thr:.2f}")
+
+    # 3) evaluate the external set with an ensemble of k models
+    ext_ds = datasets.ImageFolder(
+        Path(args.data_root) / "external_val", transform=tf_eval
+    )
+    ext_loader = DataLoader(
+        ext_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=DEVICE.type == "cuda",
+    )
+
+    ensemble_probs = []
+    for fold_id in range(1, args.n_folds + 1):
+        ckpt = torch.load(f"best_fold{fold_id}.pt", map_location=DEVICE)
+        model = build_model(pretrained=False).to(DEVICE)
+        model.load_state_dict(ckpt["state_dict"])
+        _, p_ext = infer(model, ext_loader)
+        ensemble_probs.append(p_ext)
+
+    p_ext_mean = np.mean(ensemble_probs, axis=0)
+    y_ext = np.array([lbl for _, lbl in ext_ds.samples])
+
+    ext_metrics = bootstrap_and_perm(y_ext, p_ext_mean, global_thr)
+
+    # 4) final report ---------------------------------------------------------
+    print("\n────────── CV summary ──────────")
+    for i, auc in enumerate(fold_aucs, 1):
+        print(f"fold {i}: VAL ROC-AUC = {auc:.3f}")
+    print(
+        f"CV mean ± std ROC-AUC: {np.mean(fold_aucs):.3f} "
+        f"± {np.std(fold_aucs):.3f}"
+    )
+    print_table(ext_metrics, "EXTERNAL (ensemble)")
 
 # ════════════════════ 6.  CLI ════════════════════════════════
 def cli():
