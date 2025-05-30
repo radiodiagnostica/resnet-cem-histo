@@ -33,23 +33,44 @@ class CFG:
     loss_weights:tuple=(1.,2.5)
 CFG = CFG()
 
-# ---------- SPEED & SEED -------------------------------------------------------------
+# ---------- SPEED -------------------------------------------------------------------
 torch.set_float32_matmul_precision('high')
 device=torch.device('mps' if torch.backends.mps.is_available()
                     else ('cuda' if torch.cuda.is_available() else 'cpu'))
-torch.manual_seed(CFG.seed); np.random.seed(CFG.seed); random.seed(CFG.seed)
-if device.type=='cuda': torch.cuda.manual_seed_all(CFG.seed)
+
 compile_ok=(device.type!='mps') and hasattr(torch,'compile')
 def _compile(m): return torch.compile(m) if compile_ok else m
 
+# ---------- SEED --------------------------------------------------------------------
+def set_seed(seed:int):
+    """(Re)seed every RNG we rely on."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if device.type=='cuda':
+        torch.cuda.manual_seed_all(seed)
+
 # ---------- TRANSFORMS --------------------------------------------------------------
-norm=transforms.Normalize([.485,.456,.406],[.229,.224,.225])
-aug =transforms.Compose([transforms.Grayscale(3),transforms.RandomResizedCrop(CFG.img_sz),
-                         transforms.RandomHorizontalFlip(),transforms.RandomRotation(15),
-                         transforms.ColorJitter(.1,.1),transforms.ToTensor(),norm])
-val_tf=transforms.Compose([transforms.Grayscale(3),transforms.Resize(256),
-                           transforms.CenterCrop(CFG.img_sz),transforms.ToTensor(),norm])
-dtrans={'train':aug,'val':val_tf,'external_val':val_tf}
+def build_transforms():
+    """Build data-augmentation / validation transforms based on *current* CFG."""
+    norm  = transforms.Normalize([.485,.456,.406],[.229,.224,.225])
+    aug   = transforms.Compose([
+                transforms.Grayscale(3),
+                transforms.RandomResizedCrop(CFG.img_sz),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(15),
+                transforms.ColorJitter(.1,.1),
+                transforms.ToTensor(), norm
+            ])
+    val_tf = transforms.Compose([
+                transforms.Grayscale(3),
+                transforms.Resize(256),
+                transforms.CenterCrop(CFG.img_sz),
+                transforms.ToTensor(), norm
+             ])
+    return norm, aug, val_tf, {'train': aug, 'val': val_tf, 'external_val': val_tf}
+
+norm, aug, val_tf, dtrans = build_transforms()
 
 # ---------- METRICS -----------------------------------------------------------------
 def _pr_auc(y,p):
@@ -201,9 +222,12 @@ def save_heatmaps(model,dataset,n=15,save_dir='heatmaps'):
 
 # ---------- MAIN --------------------------------------------------------------------
 def main():
-    global CFG
+    global CFG, norm, aug, val_tf, dtrans
     p=argparse.ArgumentParser(); [p.add_argument(f'--{k}',type=type(v),default=v) for k,v in asdict(CFG).items()]
     CFG = CFG.__class__(**vars(p.parse_args())); print('CONFIG:',CFG)
+
+    set_seed(CFG.seed)
+    norm, aug, val_tf, dtrans = build_transforms()
 
     dls,imgs=get_dls(); sizes={k:len(v) for k,v in imgs.items()}
     model=models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
