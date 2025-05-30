@@ -1,667 +1,579 @@
-#### Training Script
-
-import os
-import argparse
-import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import transforms, models
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-import multiprocessing
-from sklearn.metrics import roc_auc_score
-from sklearn.metrics import f1_score, precision_score, recall_score, matthews_corrcoef, balanced_accuracy_score, accuracy_score
-import warnings
-from sklearn.exceptions import UndefinedMetricWarning
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from torchvision import datasets, models, transforms
+import os
 import numpy as np
-from scipy import stats
-from scipy.stats import fisher_exact
-from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score, precision_recall_fscore_support,
+    confusion_matrix, roc_auc_score, matthews_corrcoef, precision_recall_curve, auc # Added auc
+)
+from sklearn.utils import resample # For bootstrapping
+import time
+import copy
+import random # For seeding
 
-# Check if MPS is available
+# --- Configuration ---
+DATA_DIR = './'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_NAME_TAG = "resnet18_rep" # To distinguish this run's saved files
+MODEL_SAVE_PATH = os.path.join(SCRIPT_DIR, f'best_model_hr_{MODEL_NAME_TAG}.pth')
+
+NUM_CLASSES = 2
+BATCH_SIZE = 4
+NUM_EPOCHS = 30
+LEARNING_RATE = 0.00001
+WEIGHT_DECAY = 5e-4
+LR_SCHEDULER_PATIENCE = 7
+IMAGE_SIZE = (224, 224)
+BEST_METRIC_FOR_SAVING = "pr_auc"  # Options: "balanced_accuracy", "pr_auc"
+# Ensure class 1 (HR-) is treated as the positive class for PR-AUC if that's intended.
+POSITIVE_CLASS_LABEL_FOR_PR_AUC = 1
+
+# --- Reproducibility ---
+SEED = 86
+def set_seed(seed_value):
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed_value)
+        # Potentially make CUDA operations deterministic (can slow down training)
+        # torch.backends.cudnn.deterministic = True
+        # torch.backends.cudnn.benchmark = False
+    if torch.backends.mps.is_available():
+        try:
+            torch.mps.manual_seed(seed_value)
+            # print(f"MPS seed set to {seed_value}") # Commented out for brevity from user log
+        except AttributeError:
+            print("torch.mps.manual_seed not available in this PyTorch version for MPS.")
+set_seed(SEED)
+# print(f"Global random seed set to {SEED}") # Commented out for brevity
+
+
+# --- Bootstrap Configuration ---
+N_BOOTSTRAP_SAMPLES = 1000 
+CONFIDENCE_LEVEL = 0.95
+ALPHA = (1 - CONFIDENCE_LEVEL) / 2.0
+
+
+# --- Device Configuration ---
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+    # print("Using MPS (Apple Silicon GPU)") # Commented out for brevity
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using CUDA GPU")
 else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
+    print("Using CPU")
 
-print(f"Using device: {device}")
-
-# Custom Dataset
-class CustomDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
-        self.root_dir = root_dir
-        self.transform = transform
-        self.classes = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
-        self.classes.sort()
-        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
-        self.images = self._load_images()
-
-    def _load_images(self):
-        images = []
-        for cls in self.classes:
-            class_dir = os.path.join(self.root_dir, cls)
-            for img_name in os.listdir(class_dir):
-                if img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
-                    images.append((os.path.join(class_dir, img_name), self.class_to_idx[cls]))
-        return images
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        img_path, label = self.images[idx]
-        image = Image.open(img_path).convert('RGB')
-        
-        if self.transform:
-            image = self.transform(image)
-        
-        return image.to(torch.float32), label
-
-# Data Transforms
+# --- Data Transformations ---
 data_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(224),
+        transforms.Grayscale(num_output_channels=3),
+        transforms.RandomResizedCrop(IMAGE_SIZE),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(20),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
         transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.CenterCrop(IMAGE_SIZE),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+    'external_val': transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.Resize(256),
+        transforms.CenterCrop(IMAGE_SIZE),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
 
-def calculate_metrics(y_true, y_pred, y_scores, n_bootstrap=1000, confidence_level=0.95):
-    # Suppress the UndefinedMetricWarning
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=UndefinedMetricWarning)
-        
-        metrics = {
-            'accuracy': calculate_ci_and_pvalue(y_true, y_pred, accuracy_score, n_bootstrap, confidence_level),
-            'precision': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: precision_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-            'recall': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: recall_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-            'f1': calculate_ci_and_pvalue(y_true, y_pred, lambda yt, yp: f1_score(yt, yp, average='weighted', zero_division=0), n_bootstrap, confidence_level),
-            'mcc': calculate_ci_and_pvalue(y_true, y_pred, matthews_corrcoef, n_bootstrap, confidence_level),
-            'balanced_acc': calculate_ci_and_pvalue(y_true, y_pred, balanced_accuracy_score, n_bootstrap, confidence_level),
-            'auc_roc': calculate_ci_and_pvalue(y_true, y_scores, calculate_auc_roc, n_bootstrap, confidence_level)
-        }
+# --- Load Datasets ---
+image_datasets = {
+    x: datasets.ImageFolder(os.path.join(DATA_DIR, x), data_transforms[x])
+    for x in ['train', 'val', 'external_val']
+}
+
+# --- Handle Class Imbalance for Training Set ---
+train_targets = np.array(image_datasets['train'].targets)
+class_counts_train = np.bincount(train_targets)
+# print(f"Training set class counts (0=HR+, 1=HR-): {class_counts_train}") # Commented out for brevity
+
+weight_per_class_sampler = 1. / class_counts_train
+samples_weight = np.array([weight_per_class_sampler[t] for t in train_targets])
+samples_weight = torch.from_numpy(samples_weight).double()
+sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
+
+loss_weights = torch.tensor([1.0, 2.5], dtype=torch.float32)
+loss_weights = loss_weights.to(device)
+# print(f"Using manual weights for loss function: {loss_weights}") # Commented out for brevity
+
+
+dataloaders = {
+    'train': DataLoader(image_datasets['train'], batch_size=BATCH_SIZE, sampler=sampler, worker_init_fn=lambda _: np.random.seed(SEED)),
+    'val': DataLoader(image_datasets['val'], batch_size=BATCH_SIZE, shuffle=False, worker_init_fn=lambda _: np.random.seed(SEED)),
+    'external_val': DataLoader(image_datasets['external_val'], batch_size=BATCH_SIZE, shuffle=False, worker_init_fn=lambda _: np.random.seed(SEED))
+}
+dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'external_val']}
+class_names = image_datasets['train'].classes 
+
+# print(f"Class names from ImageFolder: {class_names}") # Commented out for brevity
+# print(f"Dataset sizes: {dataset_sizes}") # Commented out for brevity
+# print(f"Using BATCH_SIZE: {BATCH_SIZE}") # Commented out for brevity
+# print(f"Optimizing for: {BEST_METRIC_FOR_SAVING} using class {POSITIVE_CLASS_LABEL_FOR_PR_AUC} as positive for PR-AUC.") # Commented out for brevity
+
+
+# --- Model Definition ---
+model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+num_ftrs = model.fc.in_features
+model.fc = nn.Linear(num_ftrs, NUM_CLASSES)
+model = model.to(device)
+# print("Using ResNet18 model.") # Commented out for brevity
+
+# --- Loss Function and Optimizer ---
+criterion = nn.CrossEntropyLoss(weight=loss_weights)
+optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=LR_SCHEDULER_PATIENCE)
+
+# --- Training Function (MODIFIED for custom metric) ---
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, best_metric_name=BEST_METRIC_FOR_SAVING):
+    since = time.time()
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_metric_score = 0.0 
     
+    history_train_losses, history_val_losses = [], []
+    history_train_metric, history_val_metric = [], []
+    
+    no_improvement_epochs_lr, min_lr_stop_patience = 0, 5
+
+    metric_name_for_print = ""
+    if best_metric_name == "balanced_accuracy":
+        metric_name_for_print = "Balanced Acc"
+    elif best_metric_name == "pr_auc":
+        metric_name_for_print = "PR AUC"
+    else:
+        raise ValueError(f"Unsupported best_metric_name: {best_metric_name}")
+
+    for epoch in range(num_epochs):
+        print(f'Epoch {epoch+1}/{num_epochs}\n' + '-' * 10)
+        for phase in ['train', 'val']:
+            model.train() if phase == 'train' else model.eval()
+            
+            running_loss = 0.0
+            all_labels_epoch, all_preds_epoch, all_probs_class_positive_epoch = [], [], []
+
+            for inputs, labels in dataloaders[phase]:
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
+                    if phase == 'train':
+                        loss.backward(); optimizer.step()
+                
+                running_loss += loss.item() * inputs.size(0)
+                all_preds_epoch.extend(preds.cpu().numpy())
+                all_labels_epoch.extend(labels.cpu().numpy())
+                if phase == 'val' or (phase == 'train' and best_metric_name == 'pr_auc'): 
+                    probabilities = torch.softmax(outputs, dim=1)
+                    # MINIMAL CHANGE HERE: Added .detach()
+                    all_probs_class_positive_epoch.extend(probabilities[:, POSITIVE_CLASS_LABEL_FOR_PR_AUC].detach().cpu().numpy())
+            
+            epoch_loss = running_loss / dataset_sizes[phase]
+            all_labels_epoch_np = np.array(all_labels_epoch)
+            all_preds_epoch_np = np.array(all_preds_epoch)
+            
+            epoch_bal_acc = balanced_accuracy_score(all_labels_epoch_np, all_preds_epoch_np)
+            epoch_pr_auc = 0.0
+            if len(np.unique(all_labels_epoch_np)) > 1:
+                all_probs_class_positive_epoch_np = np.array(all_probs_class_positive_epoch)
+                if len(all_probs_class_positive_epoch_np) == len(all_labels_epoch_np):
+                    try:
+                        precision_p, recall_p, _ = precision_recall_curve(all_labels_epoch_np, all_probs_class_positive_epoch_np, pos_label=POSITIVE_CLASS_LABEL_FOR_PR_AUC)
+                        epoch_pr_auc = auc(recall_p, precision_p)
+                    except ValueError as e:
+                        print(f"Warning: Could not calculate PR AUC for {phase} phase, epoch {epoch+1}: {e}. Setting to 0.")
+                        epoch_pr_auc = 0.0
+                else: 
+                     print(f"Warning: Mismatch in length of labels and probabilities for PR AUC in {phase} phase, epoch {epoch+1}. PR AUC set to 0.")
+                     epoch_pr_auc = 0.0
+            else:
+                if best_metric_name == 'pr_auc':
+                    print(f"Warning: Only one class present in {phase} labels for epoch {epoch+1}. {metric_name_for_print} set to 0.")
+
+            current_epoch_metric_value = 0.0
+            if best_metric_name == "balanced_accuracy":
+                current_epoch_metric_value = epoch_bal_acc
+            elif best_metric_name == "pr_auc":
+                current_epoch_metric_value = epoch_pr_auc
+            
+            if phase == 'train':
+                history_train_losses.append(epoch_loss)
+                history_train_metric.append(current_epoch_metric_value) 
+                print(f'{phase} Loss: {epoch_loss:.4f} {metric_name_for_print}: {current_epoch_metric_value:.4f} (Bal Acc: {epoch_bal_acc:.4f})')
+            else: 
+                history_val_losses.append(epoch_loss)
+                history_val_metric.append(current_epoch_metric_value) 
+                
+                old_lr = optimizer.param_groups[0]['lr']
+                scheduler.step(current_epoch_metric_value) 
+                new_lr = optimizer.param_groups[0]['lr']
+
+                if new_lr < old_lr:
+                    print(f"Epoch {epoch+1}: Learning rate reduced from {old_lr} to {new_lr}.")
+                    no_improvement_epochs_lr = 0
+                else: 
+                    no_improvement_epochs_lr += 1
+                
+                if current_epoch_metric_value > best_metric_score:
+                    best_metric_score = current_epoch_metric_value
+                    best_model_wts = copy.deepcopy(model.state_dict())
+                    torch.save(model.state_dict(), MODEL_SAVE_PATH)
+                    print(f"Best model saved to {MODEL_SAVE_PATH} with {metric_name_for_print}: {best_metric_score:.4f}")
+                    no_improvement_epochs_lr = 0 
+                print(f'{phase} Loss: {epoch_loss:.4f} {metric_name_for_print}: {current_epoch_metric_value:.4f} (Bal Acc: {epoch_bal_acc:.4f})')
+        print()
+        current_lr = optimizer.param_groups[0]['lr']
+        if current_lr <= (LEARNING_RATE * 0.01 * 0.5) and no_improvement_epochs_lr >= min_lr_stop_patience:
+             print(f"Early stopping: LR is low ({current_lr}), no improvement in validation {metric_name_for_print} for {no_improvement_epochs_lr} epochs.")
+             break
+
+    time_elapsed = time.time() - since
+    print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+    print(f'Best val {metric_name_for_print}: {best_metric_score:4f}')
+    model.load_state_dict(best_model_wts)
+    return model, history_train_losses, history_val_losses, history_train_metric, history_val_metric, metric_name_for_print
+
+# --- Threshold Tuning Function (unchanged) ---
+def find_optimal_threshold(labels_np, probs_class1_np, target_metric='f1_minority', minority_class_label=1):
+    optimal_threshold, best_metric_value = 0.5, -1
+    unique_sorted_probs = np.sort(np.unique(probs_class1_np))
+    if len(unique_sorted_probs) == 0: return 0.5
+    candidate_thresholds = (unique_sorted_probs[:-1] + unique_sorted_probs[1:]) / 2.0 if len(unique_sorted_probs) > 1 else unique_sorted_probs
+    candidate_thresholds = np.clip(np.sort(np.unique(np.append(candidate_thresholds, [0.001, 0.5, 0.999]))), 0.0, 1.0)
+    for threshold_val in candidate_thresholds:
+        preds_at_threshold = (probs_class1_np >= threshold_val).astype(int)
+        if target_metric == 'f1_minority':
+            _, _, f1, _ = precision_recall_fscore_support(labels_np, preds_at_threshold, average=None, labels=[0,1], zero_division=0)
+            current_metric_value = f1[minority_class_label]
+        elif target_metric == 'balanced_accuracy': current_metric_value = balanced_accuracy_score(labels_np, preds_at_threshold)
+        else: raise ValueError(f"Unsupported target_metric: {target_metric}")
+        if current_metric_value > best_metric_value:
+            best_metric_value, optimal_threshold = current_metric_value, threshold_val
+        elif current_metric_value == best_metric_value and abs(threshold_val - 0.5) < abs(optimal_threshold - 0.5):
+            optimal_threshold = threshold_val
+    print(f"Optimal threshold: {optimal_threshold:.4f} for '{target_metric}' (Value: {best_metric_value:.4f})")
+    return optimal_threshold
+
+# --- Evaluation Function (MODIFIED for PR-AUC and Confidence Intervals) ---
+def calculate_metrics_bootstrap(y_true, y_pred, y_probs_class1):
+    metrics = {}
+    is_problematic_sample = len(np.unique(y_true)) < 2 
+    
+    metrics['accuracy'] = accuracy_score(y_true, y_pred)
+    metrics['balanced_accuracy'] = balanced_accuracy_score(y_true, y_pred)
+    try: 
+        metrics['mcc'] = matthews_corrcoef(y_true, y_pred) if not is_problematic_sample else 0.0
+    except ValueError: metrics['mcc'] = 0.0
+    
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average=None, labels=[0,1], zero_division=0)
+    metrics['precision_hr+'] = precision[0]; metrics['recall_hr+'] = recall[0]; metrics['f1_hr+'] = f1[0]
+    metrics['precision_hr-'] = precision[1]; metrics['recall_hr-'] = recall[1]; metrics['f1_hr-'] = f1[1]
+    metrics['specificity'] = recall[0] 
+    
+    try: 
+        metrics['roc_auc'] = roc_auc_score(y_true, y_probs_class1) if not is_problematic_sample else 0.5
+    except ValueError: metrics['roc_auc'] = 0.5
+
+    try:
+        if not is_problematic_sample:
+            precision_curve, recall_curve, _ = precision_recall_curve(y_true, y_probs_class1, pos_label=POSITIVE_CLASS_LABEL_FOR_PR_AUC)
+            metrics['pr_auc'] = auc(recall_curve, precision_curve)
+        else:
+            metrics['pr_auc'] = 0.0 
+    except ValueError: 
+        metrics['pr_auc'] = 0.0
+        
     return metrics
 
-def calculate_ci_and_pvalue(y_true, y_pred, metric_func, n_bootstrap=1000, confidence_level=0.95):
-    observed_metric = metric_func(y_true, y_pred)
-    
-    # Helper function to identify the metric type
-    def identify_metric(func):
-        if func == accuracy_score or (hasattr(func, '__name__') and func.__name__ == 'accuracy_score'):
-            return 'accuracy'
-        elif func in [precision_score, recall_score, f1_score] or \
-             (hasattr(func, '__name__') and func.__name__ in ['precision_score', 'recall_score', 'f1_score']) or \
-             (callable(func) and func.__name__ == '<lambda>'):  # This line handles lambda functions
-            return 'classification'
-        elif func == matthews_corrcoef or (hasattr(func, '__name__') and func.__name__ == 'matthews_corrcoef'):
-            return 'mcc'
-        elif func in [balanced_accuracy_score, calculate_auc_roc] or \
-             (hasattr(func, '__name__') and func.__name__ in ['balanced_accuracy_score', 'calculate_auc_roc']):
-            return 'balanced'
-        else:
-            return 'unknown'
-
-    metric_type = identify_metric(metric_func)
-    
-    if metric_type == 'accuracy':
-        # Use Wilson score interval for accuracy
-        n = len(y_true)
-        z = stats.norm.ppf((1 + confidence_level) / 2)
-        p = observed_metric
-        ci_lower = (p + z**2/(2*n) - z * np.sqrt((p*(1-p)+z**2/(4*n))/n)) / (1+z**2/n)
-        ci_upper = (p + z**2/(2*n) + z * np.sqrt((p*(1-p)+z**2/(4*n))/n)) / (1+z**2/n)
-        
-        # Binomial test for p-value
-        n_correct = int(observed_metric * n)
-        p_value = stats.binomtest(n_correct, n, p=0.5, alternative='two-sided').pvalue
-    
-    elif metric_type == 'classification':
-        # Use bootstrap for CI
-        bootstrap_metrics = []
-        for _ in range(n_bootstrap):
-            indices = np.random.randint(0, len(y_true), len(y_true))
-            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
-        
-        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
-        
-        # Fisher's exact test for p-value
-        cm = confusion_matrix(y_true, y_pred)
-        _, p_value = fisher_exact(cm)
-        
-        # Cohen's h for effect size
-        p1 = cm[1, 1] / (cm[1, 0] + cm[1, 1]) if (cm[1, 0] + cm[1, 1]) > 0 else 0  # True Positive Rate
-        p2 = cm[0, 1] / (cm[0, 0] + cm[0, 1]) if (cm[0, 0] + cm[0, 1]) > 0 else 0  # False Positive Rate
-        h = 2 * np.arcsin(np.sqrt(p1)) - 2 * np.arcsin(np.sqrt(p2))  # Cohen's h
-    
-    elif metric_type == 'mcc':
-        # Use bootstrap for CI
-        bootstrap_metrics = []
-        for _ in range(n_bootstrap):
-            indices = np.random.randint(0, len(y_true), len(y_true))
-            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
-        
-        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
-        
-        # Fisher's z-transformation for p-value
-        r = observed_metric
-        z = np.arctanh(r)
-        se = 1 / np.sqrt(len(y_true) - 3)
-        p_value = 2 * (1 - stats.norm.cdf(abs(z) / se))
-    
-    elif metric_type == 'balanced':
-        # Use bootstrap for CI and p-value
-        bootstrap_metrics = []
-        for _ in range(n_bootstrap):
-            indices = np.random.randint(0, len(y_true), len(y_true))
-            bootstrap_metrics.append(metric_func(y_true[indices], y_pred[indices]))
-        
-        ci_lower, ci_upper = np.percentile(bootstrap_metrics, [(1-confidence_level)/2*100, (1+confidence_level)/2*100])
-        p_value = np.mean(np.array(bootstrap_metrics) <= 0.5) * 2  # Two-tailed test
-    
-    else:
-        raise ValueError(f"Unsupported metric function: {metric_func}")
-    
-    return observed_metric, ci_lower, ci_upper, p_value
-
-def calculate_auc_roc(y_true, y_scores):
-    # For multi-class, we use one-vs-rest approach
-    if y_scores.shape[1] > 2:
-        try:
-            return roc_auc_score(y_true, y_scores, multi_class='ovr', average='macro')
-        except ValueError:
-            # If ROC AUC can't be calculated (e.g., a class is never predicted), return NaN
-            return float('nan')
-    else:
-        try:
-            return roc_auc_score(y_true, y_scores[:, 1])  # For binary classification
-        except ValueError:
-            return float('nan')
-
-def create_model(num_classes):
-    model = models.resnet50(pretrained=True)
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Sequential(
-        nn.Dropout(0.5),
-        nn.Linear(num_ftrs, 512),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(512, num_classes)
-    )
-    return model
-
-from tabulate import tabulate
-
-def format_metrics(metrics):
-    table_rows = []
-    for metric_name, metric_value in metrics.items():
-        if len(metric_value) == 4:
-            value, ci_lower, ci_upper, p_value = metric_value
-        elif len(metric_value) == 1:
-            value = metric_value[0]
-            ci_lower, ci_upper, p_value = None, None, None
-        else:
-            raise ValueError(f"Unexpected metric tuple length: {len(metric_value)}")
-
-        def is_nan(x):
-            try:
-                return np.isnan(x)
-            except TypeError:
-                return False
-
-        if isinstance(value, torch.Tensor):
-            value = value.cpu().item()
-        
-        value_str = f"{value:.4f}" if not is_nan(value) else "N/A"
-        
-        if ci_lower is not None and ci_upper is not None:
-            ci_str = f"({ci_lower:.4f}, {ci_upper:.4f})" if not (is_nan(ci_lower) or is_nan(ci_upper)) else "N/A"
-        else:
-            ci_str = "N/A"
-        
-        if p_value is not None:
-            p_str = f"{p_value:.8f}" if not is_nan(p_value) else "N/A"
-        else:
-            p_str = "N/A"
-        
-        value = f"{value_str} {ci_str}; {p_str}"
-        table_rows.append([metric_name, value]) 
-
-    # Define the headers
-    headers = ["Metric", "Value (CI95; P)"]
-
-    # Print the table
-    print("Metrics:")
-    print(tabulate(table_rows, headers=headers, tablefmt="pipe"))
-
-def analyze_dataset(image_datasets):
-    phases = ['train', 'val']
-    
-    if 'external_val' in image_datasets:
-        phases.append('external_val')
-    
-    for phase in phases:
-        print(f"\n{phase.capitalize()} Dataset Distribution:")
-        class_counts = {cls: 0 for cls in image_datasets[phase].classes}
-        for _, label in image_datasets[phase].images:
-            class_counts[image_datasets[phase].classes[label]] += 1
-        
-        total_images = sum(class_counts.values())
-        for cls, count in class_counts.items():
-            percentage = (count / total_images) * 100
-            print(f"  Class {cls}: {count} images ({percentage:.2f}%)")
-        print(f"  Total: {total_images} images")
-
-def print_confusion_matrix(y_true, y_pred, class_names):
-    cm = confusion_matrix(y_true, y_pred)
-    print("\nConfusion Matrix:")
-    print("            " + " ".join(f"{name:>10}" for name in class_names))
-    for i, row in enumerate(cm):
-        print(f"{class_names[i]:>12}" + " ".join(f"{cell:>10}" for cell in row))
-
-def generate_activation_maps(model, image_path, class_idx, transform):
-    from pytorch_grad_cam import GradCAM
-    from pytorch_grad_cam.utils.image import show_cam_on_image
-    from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
-    import numpy as np
-
-    # Load and preprocess image
-    img = Image.open(image_path).convert('RGB')
-    input_tensor = transform(img).unsqueeze(0).to(device)
-    
-    # Initialize GradCAM
-    target_layers = [model.layer4[-1]]  # Last layer of ResNet
-
-    # Ensure model is in eval mode but with gradients enabled
+def evaluate_model(model, dataloader, phase_name="Test", fixed_threshold=None):
     model.eval()
+    all_preds_default_thresh, all_labels, all_probs_class1 = [], [], [] 
+    with torch.no_grad():
+        for inputs, labels_batch in dataloader: 
+            inputs, labels_batch = inputs.to(device), labels_batch.to(device)
+            outputs = model(inputs)
+            _, preds_default = torch.max(outputs, 1)
+            probabilities = torch.softmax(outputs, dim=1)
+            all_probs_class1.extend(probabilities[:, POSITIVE_CLASS_LABEL_FOR_PR_AUC].cpu().numpy())
+            all_preds_default_thresh.extend(preds_default.cpu().numpy())
+            all_labels.extend(labels_batch.cpu().numpy())
+
+    labels_np = np.array(all_labels)
+    probs_class1_np = np.array(all_probs_class1)
+
+    if len(labels_np) == 0:
+        print("No data to evaluate.")
+        empty_metrics_dict = {key: (0, (np.nan, np.nan)) for key in [ 
+            "accuracy", "balanced_accuracy", "mcc", "specificity", "pr_auc", 
+            "precision_hr+", "recall_hr+", "f1_hr+",
+            "precision_hr-", "recall_hr-", "f1_hr-", "roc_auc"
+        ]}
+        empty_metrics_dict["labels_np"] = labels_np
+        empty_metrics_dict["probs_class1_np"] = probs_class1_np
+        return empty_metrics_dict
+
+    current_threshold_for_print = f"{fixed_threshold:.4f}" if fixed_threshold is not None else "Default 0.5"
+    preds_np = (probs_class1_np >= fixed_threshold).astype(int) if fixed_threshold is not None and POSITIVE_CLASS_LABEL_FOR_PR_AUC == 1 else \
+               (probs_class1_np <= fixed_threshold).astype(int) if fixed_threshold is not None and POSITIVE_CLASS_LABEL_FOR_PR_AUC == 0 else \
+               np.array(all_preds_default_thresh)
+
+
+    print(f"\n--- Evaluation Metrics for {phase_name} (Threshold: {current_threshold_for_print}) ---")
     
-    # Create a wrapper class to handle MPS/CUDA/CPU devices
-    class ModelWrapper(torch.nn.Module):
-        def __init__(self, model):
-            super(ModelWrapper, self).__init__()
-            self.model = model
-            
-        def forward(self, x):
-            return self.model(x)
-
-        def __call__(self, x):
-            return self.forward(x)
-
-    wrapped_model = ModelWrapper(model)
+    point_metrics = calculate_metrics_bootstrap(labels_np, preds_np, probs_class1_np)
     
-    # Initialize GradCAM with the wrapped model
-    cam = GradCAM(model=wrapped_model, target_layers=target_layers)
-    
-    # Define target category
-    targets = [ClassifierOutputTarget(class_idx)]
-    
-    # Generate activation map
-    try:
-        # Ensure input tensor requires grad
-        input_tensor.requires_grad = True
-        
-        # Generate CAM
-        grayscale_cam = cam(input_tensor=input_tensor, targets=targets)
-        grayscale_cam = grayscale_cam[0, :]
-        
-        # Convert PIL Image to numpy array
-        rgb_img = np.array(img)
-        rgb_img = cv2.resize(rgb_img, (224, 224))
-        rgb_img = rgb_img / 255.0
-        
-        # Ensure rgb_img is in the correct format
-        if rgb_img.max() > 1:
-            rgb_img = rgb_img / 255.0
-        
-        # Overlay activation map on original image
-        visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
-        
-        return visualization
-    
-    except Exception as e:
-        print(f"Error generating activation map: {str(e)}")
-        # Return the original image if CAM generation fails
-        rgb_img = np.array(img)
-        rgb_img = cv2.resize(rgb_img, (224, 224))
-        return rgb_img
-
-def main(target_metric, num_epochs, patience, data_dir, n_bootstrap, confidence_level):
-    print(f"Training with target metric: {target_metric}, epochs: {num_epochs}, patience: {patience}")
-    print(f"Using dataset directory: {data_dir}")
-    print(f"Bootstrap iterations: {n_bootstrap}, Confidence level: {confidence_level}")
-
-    # Load Data
-    image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
-                      for x in ['train', 'val']}
-    
-    # Check for external validation set
-    external_val_dir = os.path.join(data_dir, 'external_val')
-    has_external_val = os.path.exists(external_val_dir)
-    if has_external_val:
-        image_datasets['external_val'] = CustomDataset(external_val_dir, data_transforms['val'])
-        print("External validation set found!")
-
-    dataloaders = {x: DataLoader(image_datasets[x], batch_size=32, shuffle=True, num_workers=0)
-                   for x in image_datasets.keys()}
-    dataset_sizes = {x: len(image_datasets[x]) for x in image_datasets.keys()}
-    class_names = image_datasets['train'].classes
-
-    # Analyze dataset distribution and print it
-    analyze_dataset(image_datasets)
-
-    # Load pre-trained ResNet model
-    model = create_model(len(class_names))
-    model = model.to(device)
-    model = model.to(torch.float32)
-
-    # Loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True)
-
-    def train_model(model, criterion, optimizer, scheduler, num_epochs=50, patience=10):
-        writer = SummaryWriter()
-        best_model_wts = model.state_dict()
-        best_metric_value = float('-inf')
-        no_improve_epochs = 0
-        
-        # List of phases to evaluate
-        phases = ['train', 'val']
-        if 'external_val' in dataloaders:
-            phases.append('external_val')
-        
-        for epoch in range(num_epochs):
-            print(f'Epoch {epoch+1}/{num_epochs}')
-            print('-' * 10)
-            
-            for phase in phases:
-                if phase == 'train':
-                    model.train()
-                else:
-                    model.eval()
-                
-                running_loss = 0.0
-                running_corrects = 0
-                all_labels = []
-                all_preds = []
-                all_scores = []
-                
-                for inputs, labels in dataloaders[phase]:
-                    inputs = inputs.to(device)
-                    labels = labels.to(device)
-                    
-                    optimizer.zero_grad()
-                    
-                    with torch.set_grad_enabled(phase == 'train'):
-                        outputs = model(inputs)
-                        _, preds = torch.max(outputs, 1)
-                        loss = criterion(outputs, labels)
-                        
-                        if phase == 'train':
-                            loss.backward()
-                            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                            optimizer.step()
-                    
-                    running_loss += loss.item() * inputs.size(0)
-                    running_corrects += torch.sum(preds == labels.data)
-                    
-                    all_labels.extend(labels.cpu().detach().numpy())
-                    all_preds.extend(preds.cpu().detach().numpy())
-                    all_scores.extend(outputs.cpu().detach().numpy())
-                
-                epoch_loss = running_loss / dataset_sizes[phase]
-                epoch_acc = running_corrects.float() / dataset_sizes[phase]
-                
-                # Calculate additional metrics
-                metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), 
-                                        np.array(all_scores), n_bootstrap=n_bootstrap, 
-                                        confidence_level=confidence_level)
-
-                print(f'\n{phase.capitalize()} Loss: {epoch_loss:.4f}')
-                format_metrics(metrics)
-                
-                # Update the TensorBoard logging
-                writer.add_scalar(f'{phase} loss', epoch_loss, epoch)
-                for k, v in metrics.items():
-                    writer.add_scalar(f'{phase} {k}', v[0], epoch)
-                    writer.add_scalar(f'{phase} {k}_ci_lower', v[1], epoch)
-                    writer.add_scalar(f'{phase} {k}_ci_upper', v[2], epoch)
-                    writer.add_scalar(f'{phase} {k}_p_value', v[3], epoch)
-                
-                # Model checkpointing based on validation set only
-                if phase == 'val':
-                    scheduler.step(epoch_loss)
-                    if metrics[target_metric][0] > best_metric_value:
-                        best_metric_value = metrics[target_metric][0]
-                        best_model_wts = model.state_dict()
-                        no_improve_epochs = 0
-                    else:
-                        no_improve_epochs += 1
-                    
-                    if no_improve_epochs >= patience:
-                        print(f"Early stopping triggered after {epoch+1} epochs")
-                        model.load_state_dict(best_model_wts)
-                        return model
-                
-                # Save external validation metrics at best model point
-                if phase == 'external_val':
-                    writer.add_scalar('best_external_val_metric', metrics[target_metric][0], epoch)
-            
-            print()
-        
-        print(f'Best val {target_metric}: {best_metric_value:4f}')
-        model.load_state_dict(best_model_wts)
-        writer.close()
-        return model
-
-    # Train the model
-    model = train_model(model, criterion, optimizer, scheduler, num_epochs=num_epochs, patience=patience)
-
-    # Evaluate on validation set
-    def evaluate_model(model, dataloader, phase):
-        model.eval()
-        all_labels = []
-        all_preds = []
-        all_scores = []
-
-        with torch.no_grad():
-            for inputs, labels in dataloader:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                outputs = model(inputs)
-                _, preds = torch.max(outputs, 1)
-                
-                all_labels.extend(labels.cpu().numpy())
-                all_preds.extend(preds.cpu().numpy())
-                all_scores.extend(outputs.cpu().numpy())
-
-        metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), np.array(all_scores))
-        print(f"\n{phase.capitalize()} Metrics:")
-        format_metrics(metrics)
-        print_confusion_matrix(all_labels, all_preds, class_names)
-        return metrics, all_labels, all_preds
-
-    # Evaluate on validation set
-    val_metrics, val_labels, val_preds = evaluate_model(model, dataloaders['val'], 'validation')
-
-    # Evaluate on external validation set if available
-    if has_external_val:
-        print("\nEvaluating on external validation set:")
-        ext_metrics, ext_labels, ext_preds = evaluate_model(model, dataloaders['external_val'], 'external validation')
-
-    # Generate activation maps
-    print("\nGenerating activation maps...")
-    os.makedirs('activation_maps', exist_ok=True)
-
-    def get_sample_images(dataset, num_samples_per_class=200):
-        class_examples = {cls: [] for cls in range(len(class_names))}
-        for i in range(len(dataset)):
-            img_path, label = dataset.images[i]
-            if len(class_examples[label]) < num_samples_per_class:
-                class_examples[label].append(img_path)
-            if all(len(examples) >= num_samples_per_class for examples in class_examples.values()):
-                break
-        return class_examples
-
-    # Get sample images from validation set
-    val_examples = get_sample_images(image_datasets['val'])
-
-    # Generate and save activation maps
-    model.eval()
-    for class_idx, img_paths in val_examples.items():
-        for i, img_path in enumerate(img_paths):
-            visualization = generate_activation_maps(model, img_path, class_idx, data_transforms['val'])
-            
-            # Save the visualization
-            class_name = class_names[class_idx]
-            output_path = f'activation_maps/class_{class_name}_sample_{i+1}_activation.png'
-            cv2.imwrite(output_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
-            print(f"Saved activation map for class {class_name} (sample {i+1})")
-
-    # Save the trained model
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'val_metrics': val_metrics,
-        'external_val_metrics': ext_metrics if has_external_val else None,
-        'class_names': class_names
-    }, 'resnet_model.pth')
-
-    print("\nTraining complete. Model and results saved.")
-
-def evaluate_existing_model(model_path, data_dir, n_bootstrap, confidence_level):
-    print(f"Evaluating model: {model_path}")
-    print(f"Using dataset directory: {data_dir}")
-
-    # Load Data
-    image_datasets = {x: CustomDataset(os.path.join(data_dir, x), data_transforms['val']) 
-                    for x in ['val']}
-    
-    # Check for external validation set
-    external_val_dir = os.path.join(data_dir, 'external_val')
-    has_external_val = os.path.exists(external_val_dir)
-    if has_external_val:
-        image_datasets['external_val'] = CustomDataset(external_val_dir, data_transforms['val'])
-        print("External validation set found!")
-
-    dataloaders = {x: DataLoader(image_datasets[x], batch_size=32, shuffle=False, num_workers=0)
-                  for x in image_datasets.keys()}
-    class_names = image_datasets['val'].classes
-
-    # Load the model
-    checkpoint = torch.load(model_path, map_location=device)
-    model = create_model(len(class_names))
-    
-    # Handle different saving formats
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        # New format with metadata
-        model.load_state_dict(checkpoint['model_state_dict'])
+    bootstrap_metrics_values = {key: [] for key in point_metrics.keys()} 
+    n_samples = len(labels_np)
+    if n_samples < 10: 
+        print("Sample size too small for reliable bootstrapping.")
+        metrics_with_ci = {key: (value, (np.nan, np.nan)) for key, value in point_metrics.items()}
     else:
-        # Simple format (just the state dict)
-        model.load_state_dict(checkpoint)
+        for i in range(N_BOOTSTRAP_SAMPLES):
+            indices = resample(np.arange(n_samples), n_samples=n_samples, random_state=SEED+i) 
+            labels_boot = labels_np[indices]
+            probs_class1_boot = probs_class1_np[indices]
+            
+            if len(np.unique(labels_boot)) < 2:
+                continue
+
+            preds_boot = (probs_class1_boot >= fixed_threshold).astype(int) if fixed_threshold is not None and POSITIVE_CLASS_LABEL_FOR_PR_AUC == 1 else \
+                         (probs_class1_boot <= fixed_threshold).astype(int) if fixed_threshold is not None and POSITIVE_CLASS_LABEL_FOR_PR_AUC == 0 else \
+                         (np.array(all_preds_default_thresh)[indices]) 
+
+            current_boot_metrics = calculate_metrics_bootstrap(labels_boot, preds_boot, probs_class1_boot)
+            for key in bootstrap_metrics_values.keys():
+                bootstrap_metrics_values[key].append(current_boot_metrics.get(key, np.nan)) 
+        
+        metrics_with_ci = {}
+        for key, values in bootstrap_metrics_values.items():
+            if not values: 
+                 metrics_with_ci[key] = (point_metrics[key], (np.nan, np.nan))
+                 continue
+            valid_values = [v for v in values if not np.isnan(v)]
+            if not valid_values:
+                metrics_with_ci[key] = (point_metrics[key], (np.nan, np.nan))
+                continue
+            lower_bound = np.percentile(valid_values, ALPHA * 100)
+            upper_bound = np.percentile(valid_values, (1 - ALPHA) * 100)
+            metrics_with_ci[key] = (point_metrics[key], (lower_bound, upper_bound))
+
+    print(f"Overall Accuracy: {metrics_with_ci.get('accuracy', (np.nan,))[0]:.4f} (95% CI: {metrics_with_ci.get('accuracy', (np.nan, (np.nan, np.nan)))[1][0]:.4f}-{metrics_with_ci.get('accuracy', (np.nan, (np.nan, np.nan)))[1][1]:.4f})")
+    print(f"Balanced Accuracy: {metrics_with_ci.get('balanced_accuracy', (np.nan,))[0]:.4f} (95% CI: {metrics_with_ci.get('balanced_accuracy', (np.nan, (np.nan, np.nan)))[1][0]:.4f}-{metrics_with_ci.get('balanced_accuracy', (np.nan, (np.nan, np.nan)))[1][1]:.4f})")
+    print(f"Specificity (HR+ Recall): {metrics_with_ci.get('specificity', (np.nan,))[0]:.4f} (95% CI: {metrics_with_ci.get('specificity', (np.nan, (np.nan, np.nan)))[1][0]:.4f}-{metrics_with_ci.get('specificity', (np.nan, (np.nan, np.nan)))[1][1]:.4f})")
+    print(f"Matthews Correlation Coefficient (MCC): {metrics_with_ci.get('mcc', (np.nan,))[0]:.4f} (95% CI: {metrics_with_ci.get('mcc', (np.nan, (np.nan, np.nan)))[1][0]:.4f}-{metrics_with_ci.get('mcc', (np.nan, (np.nan, np.nan)))[1][1]:.4f})")
     
-    model = model.to(device)
-    model.eval()
+    print("\nClass-wise metrics (Value (95% CI Lower-Upper)):")
+    print(f"  Class {class_names[0]} (HR+):")
+    print(f"    Precision: {metrics_with_ci.get('precision_hr+',(np.nan,))[0]:.4f} ({metrics_with_ci.get('precision_hr+',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('precision_hr+',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
+    print(f"    Recall (Specificity): {metrics_with_ci.get('recall_hr+',(np.nan,))[0]:.4f} ({metrics_with_ci.get('recall_hr+',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('recall_hr+',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
+    print(f"    F1-score: {metrics_with_ci.get('f1_hr+',(np.nan,))[0]:.4f} ({metrics_with_ci.get('f1_hr+',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('f1_hr+',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
+    print(f"  Class {class_names[1]} (HR-):")
+    print(f"    Precision: {metrics_with_ci.get('precision_hr-',(np.nan,))[0]:.4f} ({metrics_with_ci.get('precision_hr-',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('precision_hr-',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
+    print(f"    Recall (Sensitivity): {metrics_with_ci.get('recall_hr-',(np.nan,))[0]:.4f} ({metrics_with_ci.get('recall_hr-',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('recall_hr-',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
+    print(f"    F1-score: {metrics_with_ci.get('f1_hr-',(np.nan,))[0]:.4f} ({metrics_with_ci.get('f1_hr-',(np.nan,(np.nan,np.nan)))[1][0]:.4f}-{metrics_with_ci.get('f1_hr-',(np.nan,(np.nan,np.nan)))[1][1]:.4f})")
 
-    def evaluate_dataset(model, dataloader, phase):
-        all_labels = []
-        all_preds = []
-        all_scores = []
+    if metrics_with_ci.get('roc_auc', (None,))[0] is not None:
+         print(f"\nROC AUC (for HR- as positive class): {metrics_with_ci['roc_auc'][0]:.4f} (95% CI: {metrics_with_ci['roc_auc'][1][0]:.4f}-{metrics_with_ci['roc_auc'][1][1]:.4f})")
+    else: print("\nROC AUC could not be calculated or not available.")
+    
+    if metrics_with_ci.get('pr_auc', (None,))[0] is not None: 
+         print(f"PR AUC (for HR- as positive class): {metrics_with_ci['pr_auc'][0]:.4f} (95% CI: {metrics_with_ci['pr_auc'][1][0]:.4f}-{metrics_with_ci['pr_auc'][1][1]:.4f})")
+    else: print("PR AUC could not be calculated or not available.")
 
-        with torch.no_grad():
-            for inputs, labels in dataloader:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                outputs = model(inputs)
-                _, preds = torch.max(outputs, 1)
-                
-                all_labels.extend(labels.cpu().numpy())
-                all_preds.extend(preds.cpu().numpy())
-                all_scores.extend(outputs.cpu().numpy())
+    cm = confusion_matrix(labels_np, preds_np, labels=[0,1])
+    plt.figure(figsize=(6,5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=[f"Pred {class_names[0]} (HR+)", f"Pred {class_names[1]} (HR-)"],
+                yticklabels=[f"True {class_names[0]} (HR+)", f"True {class_names[1]} (HR-)"])
+    cm_title_thresh = "Def" if fixed_threshold is None else f"{fixed_threshold:.2f}"
+    plt.title(f'Confusion Matrix - {phase_name} (Thresh: {cm_title_thresh})')
+    plt.ylabel('Actual'); plt.xlabel('Predicted'); plt.tight_layout()
+    plt.savefig(os.path.join(SCRIPT_DIR, f"cm_{MODEL_NAME_TAG}_{phase_name.lower().replace(' ', '_').replace('(', '').replace(')', '')}_{cm_title_thresh.replace('.', 'p')}.png"))
+    plt.show()
+    
+    metrics_with_ci["labels_np"] = labels_np
+    metrics_with_ci["probs_class1_np"] = probs_class1_np
+    return metrics_with_ci
 
-        metrics = calculate_metrics(np.array(all_labels), np.array(all_preds), 
-                                 np.array(all_scores), n_bootstrap, confidence_level)
-        print(f"\n{phase.capitalize()} Metrics:")
-        format_metrics(metrics)
-        print_confusion_matrix(all_labels, all_preds, class_names)
-        return metrics
 
-    # Evaluate on validation set
-    print("\nEvaluating on validation set:")
-    val_metrics = evaluate_dataset(model, dataloaders['val'], 'validation')
+# --- Plotting training history ---
+def plot_training_history(train_losses, val_losses, train_metric_scores, val_metric_scores, metric_name="Metric"): 
+    epochs_len = len(train_losses)
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, epochs_len + 1), train_losses, label='Training Loss')
+    plt.plot(range(1, len(val_losses) + 1), val_losses, label='Validation Loss')
+    plt.legend(loc='upper right'); plt.title('Training and Validation Loss'); plt.xlabel('Epoch'); plt.ylabel('Loss')
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, epochs_len + 1), train_metric_scores, label=f'Training {metric_name}')
+    plt.plot(range(1, len(val_metric_scores) + 1), val_metric_scores, label=f'Validation {metric_name}')
+    plt.legend(loc='lower right'); plt.title(f'Training and Validation {metric_name}'); plt.xlabel('Epoch'); plt.ylabel(metric_name)
+    plt.tight_layout()
+    plt.savefig(os.path.join(SCRIPT_DIR, f"training_history_{MODEL_NAME_TAG}_{metric_name.replace(' ', '_').lower()}.png"))
+    plt.show()
 
-    # Evaluate on external validation set if available
-    if has_external_val:
-        print("\nEvaluating on external validation set:")
-        ext_metrics = evaluate_dataset(model, dataloaders['external_val'], 'external validation')
-
-    # Generate activation maps
-    print("\nGenerating activation maps...")
-    os.makedirs('activation_maps', exist_ok=True)
-
-    def get_sample_images(dataset, num_samples_per_class=200):
-        class_examples = {cls: [] for cls in range(len(class_names))}
-        for i in range(len(dataset)):
-            img_path, label = dataset.images[i]
-            if len(class_examples[label]) < num_samples_per_class:
-                class_examples[label].append(img_path)
-            if all(len(examples) >= num_samples_per_class for examples in class_examples.values()):
-                break
-        return class_examples
-
-    # Get sample images and generate activation maps
-    val_examples = get_sample_images(image_datasets['val'])
-    for class_idx, img_paths in val_examples.items():
-        for i, img_path in enumerate(img_paths):
-            visualization = generate_activation_maps(model, img_path, class_idx, data_transforms['val'])
-            class_name = class_names[class_idx]
-            output_path = f'activation_maps/class_{class_name}_sample_{i+1}_activation.png'
-            cv2.imwrite(output_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
-            print(f"Saved activation map for class {class_name} (sample {i+1})")
-
-    print("\nEvaluation complete.")
-
+# --- Main Execution (MODIFIED for new summary print and plot call) ---
 if __name__ == '__main__':
-    multiprocessing.freeze_support()
-    parser = argparse.ArgumentParser(description='Train or evaluate a model with specified parameters')
-    parser.add_argument('--metric', type=str, default='accuracy', 
-                        choices=['accuracy', 'precision', 'recall', 'f1', 'mcc', 'balanced_acc', 'auc_roc'],
-                        help='Metric to optimize during training')
-    parser.add_argument('--epochs', type=int, default=50,
-                        help='Number of training epochs')
-    parser.add_argument('--patience', type=int, default=50,
-                        help='Number of epochs with no improvement after which training will be stopped')
-    parser.add_argument('--data_dir', type=str, default='dataset',
-                        help='Path to the dataset directory')
-    parser.add_argument('--n_bootstrap', type=int, default=1000,
-                        help='Number of bootstrap iterations for confidence intervals')
-    parser.add_argument('--confidence_level', type=float, default=0.95,
-                        help='Confidence level for the confidence intervals')
-    parser.add_argument('--evaluate', type=str,
-                        help='Path to existing model for evaluation')
-    args = parser.parse_args()
+    # Simplified print statements from user log
+    print(f"MPS seed set to {SEED}")
+    print(f"Global random seed set to {SEED}")
+    print(f"Using {device}")
+    print(f"Training set class counts (0=HR+, 1=HR-): {class_counts_train}")
+    print(f"Using manual weights for loss function: {loss_weights.cpu().numpy()}") # .cpu().numpy() for print
+    print(f"Class names from ImageFolder: {class_names}")
+    print(f"Dataset sizes: {dataset_sizes}")
+    print(f"Using BATCH_SIZE: {BATCH_SIZE}")
+    print(f"Optimizing for: {BEST_METRIC_FOR_SAVING} using class {POSITIVE_CLASS_LABEL_FOR_PR_AUC} as positive for PR-AUC.")
+    print("Using ResNet18 model.")
 
-    if args.evaluate:
-        # Run evaluation mode
-        evaluate_existing_model(args.evaluate, args.data_dir, args.n_bootstrap, args.confidence_level)
+
+    for split in ['train', 'val', 'external_val']:
+        if not os.path.exists(os.path.join(DATA_DIR, split)):
+            print(f"WARNING: Base directory {os.path.join(DATA_DIR, split)} does not exist.")
+            continue
+        # Assuming class_names from ImageFolder are actual directory names like '1', '2'
+        # If image_datasets[split].classes gives ['HR_pos_folder', 'HR_neg_folder'], use that
+        # For now, assuming class_names like ['1', '2'] which are often default
+        for label_dir_name in image_datasets[split].classes: 
+            path = os.path.join(DATA_DIR, split, label_dir_name)
+            if not os.path.exists(path) or (os.path.isdir(path) and not os.listdir(path)):
+                print(f"WARNING: Directory {path} is empty or does not exist.")
+
+
+    print(f"Starting training with {MODEL_NAME_TAG}, optimizing for {BEST_METRIC_FOR_SAVING}...")
+    model_ft, train_l, val_l, train_met_hist, val_met_hist, trained_metric_name = train_model(
+        model, criterion, optimizer, scheduler, num_epochs=NUM_EPOCHS, best_metric_name=BEST_METRIC_FOR_SAVING
+    )
+    
+    print(f"\nPlotting training history for {MODEL_NAME_TAG} ({trained_metric_name})...")
+    plot_training_history(train_l, val_l, train_met_hist, val_met_hist, metric_name=trained_metric_name)
+
+    print(f"\n--- Validation Set Evaluation ({MODEL_NAME_TAG}) ---")
+    val_eval_results_default = evaluate_model(model_ft, dataloaders['val'], phase_name=f"Validation Set ({MODEL_NAME_TAG})")
+    val_labels = val_eval_results_default.get("labels_np") 
+    val_probs_hr_neg = val_eval_results_default.get("probs_class1_np") 
+    optimal_threshold_val = 0.5 
+
+    val_eval_results_optimal = None 
+    if val_labels is not None and len(val_labels) > 0 and \
+       val_probs_hr_neg is not None and len(val_probs_hr_neg) > 0 and \
+       len(np.unique(val_labels)) > 1:
+        print(f"\nTuning threshold on Validation Set probabilities ({MODEL_NAME_TAG})...")
+        optimal_threshold_val = find_optimal_threshold(val_labels, val_probs_hr_neg, target_metric='f1_minority', minority_class_label=POSITIVE_CLASS_LABEL_FOR_PR_AUC)
+        print(f"\nRe-evaluating Validation Set with optimal threshold: {optimal_threshold_val:.4f} ({MODEL_NAME_TAG})")
+        val_eval_results_optimal = evaluate_model(model_ft, dataloaders['val'], phase_name=f"Validation Set OptimalTh ({MODEL_NAME_TAG})", fixed_threshold=optimal_threshold_val)
     else:
-        # Run training mode
-        main(args.metric, args.epochs, args.patience, args.data_dir, args.n_bootstrap, args.confidence_level)
+        print("Not enough data or only one class in validation set to tune threshold. Using default 0.5 for optimal, or copying default results.")
+        if val_eval_results_default: val_eval_results_optimal = val_eval_results_default
 
+
+    print(f"\n--- External Validation Set Evaluation ({MODEL_NAME_TAG}) ---")
+    best_model_instance = models.resnet18(weights=None) 
+    num_ftrs_best = best_model_instance.fc.in_features
+    best_model_instance.fc = nn.Linear(num_ftrs_best, NUM_CLASSES)
+    
+    ext_val_results_default = None
+    ext_val_results_optimal = None
+
+    print(f"Loading best {MODEL_NAME_TAG} model from: {MODEL_SAVE_PATH}")
+    if not os.path.exists(MODEL_SAVE_PATH):
+        print(f"ERROR: Model file not found at {MODEL_SAVE_PATH}.")
+    else:
+        try:
+            best_model_instance.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=device))
+            best_model_instance = best_model_instance.to(device)
+            
+            print(f"\nEvaluating External Val Set with default threshold (0.5) ({MODEL_NAME_TAG})...")
+            ext_val_results_default = evaluate_model(best_model_instance, dataloaders['external_val'], phase_name=f"External Val Set ({MODEL_NAME_TAG})")
+            
+            if ext_val_results_default and ext_val_results_default.get("labels_np") is not None and \
+               len(ext_val_results_default.get("labels_np")) > 0 : 
+                print(f"\nEvaluating External Val Set with optimal threshold from Val set ({optimal_threshold_val:.4f}) ({MODEL_NAME_TAG})...")
+                ext_val_results_optimal = evaluate_model(best_model_instance, dataloaders['external_val'], phase_name=f"External Val Set OptimalTh ({MODEL_NAME_TAG})", fixed_threshold=optimal_threshold_val)
+            else: 
+                print("Default threshold evaluation failed or produced no results for external set, skipping optimal threshold evaluation.")
+
+        except Exception as e:
+            print(f"Error loading model or evaluating on external set: {e}")
+
+    print(f"\n\n--- FINAL METRICS SUMMARY ({MODEL_NAME_TAG}) ---")
+    
+    def print_metrics_summary_ci(phase_results, phase_name, threshold_name, threshold_val_print=""):
+        if phase_results and phase_results.get('balanced_accuracy') and not (isinstance(phase_results['balanced_accuracy'][0], float) and np.isnan(phase_results['balanced_accuracy'][0])): 
+            print(f"{phase_name} - {threshold_name}{threshold_val_print}:")
+            metric_order = [
+                "accuracy", "balanced_accuracy", "specificity", "mcc", "roc_auc", "pr_auc",
+                "precision_hr+", "recall_hr+", "f1_hr+",
+                "precision_hr-", "recall_hr-", "f1_hr-"
+            ]
+            printed_keys = set()
+            for metric_key in metric_order:
+                if metric_key in phase_results:
+                    metric_data = phase_results[metric_key]
+                    if metric_key in ["labels_np", "probs_class1_np"]: continue
+                    if isinstance(metric_data, tuple) and len(metric_data) == 2 and \
+                       isinstance(metric_data[1], tuple) and len(metric_data[1]) == 2:
+                        val, (ci_low, ci_high) = metric_data
+                        readable_key = metric_key.replace('_hr+', ' (HR+)').replace('_hr-', ' (HR-)').replace('_', ' ').capitalize()
+                        if metric_key == 'recall_hr+': readable_key = 'Specificity (Recall HR+)'
+                        elif metric_key == 'recall_hr-': readable_key = 'Sensitivity (Recall HR-)'
+                        elif metric_key == 'pr_auc': readable_key = 'PR AUC'
+                        elif metric_key == 'roc_auc': readable_key = 'ROC AUC'
+                        
+                        val_str = f"{val:.4f}" if val is not None and not np.isnan(val) else "N/A"
+                        ci_low_str = f"{ci_low:.4f}" if ci_low is not None and not np.isnan(ci_low) else "N/A"
+                        ci_high_str = f"{ci_high:.4f}" if ci_high is not None and not np.isnan(ci_high) else "N/A"
+                        print(f"  {readable_key:<30}: {val_str} (95% CI: {ci_low_str}-{ci_high_str})")
+                        printed_keys.add(metric_key)
+            
+            for metric_key, metric_data in phase_results.items():
+                if metric_key in printed_keys or metric_key in ["labels_np", "probs_class1_np"]:
+                    continue
+                if isinstance(metric_data, tuple) and len(metric_data) == 2 and \
+                   isinstance(metric_data[1], tuple) and len(metric_data[1]) == 2:
+                    val, (ci_low, ci_high) = metric_data
+                    val_str = f"{val:.4f}" if val is not None and not np.isnan(val) else "N/A"
+                    ci_low_str = f"{ci_low:.4f}" if ci_low is not None and not np.isnan(ci_low) else "N/A"
+                    ci_high_str = f"{ci_high:.4f}" if ci_high is not None and not np.isnan(ci_high) else "N/A"
+                    print(f"  {metric_key.replace('_',' ').capitalize():<30}: {val_str} (95% CI: {ci_low_str}-{ci_high_str})")
+
+
+            print("-" * 30)
+        else:
+            print(f"{phase_name} - {threshold_name}{threshold_val_print}: Metrics not available or not computed properly.")
+
+    print(f"\n-- Validation Set ({MODEL_NAME_TAG}) --")
+    print_metrics_summary_ci(val_eval_results_default, "Validation", "Default Thresh")
+    if val_eval_results_optimal:
+        print_metrics_summary_ci(val_eval_results_optimal, "Validation", "Optimal Thresh", f" ({optimal_threshold_val:.2f})")
+
+    print(f"\n-- External Validation Set ({MODEL_NAME_TAG}) --")
+    print_metrics_summary_ci(ext_val_results_default, "External Val", "Default Thresh")
+    if ext_val_results_optimal:
+        print_metrics_summary_ci(ext_val_results_optimal, "External Val", "Optimal Thresh", f" ({optimal_threshold_val:.2f})")
+
+    if not os.path.exists(MODEL_SAVE_PATH) and ext_val_results_default is None: 
+        print(f"\nExternal validation could not be performed for {MODEL_NAME_TAG} because the model file was not found or evaluation failed.")
