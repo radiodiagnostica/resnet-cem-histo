@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-#  Hormone-receptor (HR) prediction – compact v4
-#  Adds: CMs for every split & threshold (hi-dpi),
-#        keeps pandas CSV + train metrics etc.
+#  Hormone-receptor (HR) prediction – compact v5.2  +  Grad-CAM
 # ------------------------------------------------------------
 from __future__ import annotations
 import os, copy, random, argparse, warnings
@@ -10,15 +8,17 @@ from dataclasses import dataclass, asdict
 
 import numpy as np, pandas as pd
 import torch, torch.nn as nn, torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import datasets, transforms, models
+from PIL import Image
+
+import matplotlib, matplotlib.pyplot as plt, seaborn as sns
+matplotlib.use("Agg")
 
 from sklearn.metrics import *
 from sklearn.utils import resample
-
-import matplotlib, matplotlib.pyplot as plt, seaborn as sns
-matplotlib.use("Agg")  # speed (no GUI)
 
 # ---------- CONFIG ------------------------------------------------------------------
 @dataclass
@@ -163,6 +163,42 @@ def cm_plot(y,ŷ,name):
     plt.title(name); plt.tight_layout()
     plt.savefig(f'cm_{name}_{CFG.tag}.png',dpi=300); plt.close()
 
+# ---------- ACTIVATION HEATMAPS (Grad-CAM) ------------------------------------------
+def save_heatmaps(model,dataset,n=15,save_dir='heatmaps'):
+    os.makedirs(save_dir,exist_ok=True)
+    blk=model.layer4[-1]
+
+    acts,grads=[],[]
+    def fw_hook(_, __, output):
+        acts.append(output.detach())
+        output.register_hook(lambda g: grads.append(g))
+    h=blk.register_forward_hook(fw_hook)
+    model.eval()
+
+    for idx in random.sample(range(len(dataset)),min(n,len(dataset))):
+        acts.clear(); grads.clear()
+        pth,_ = dataset.samples[idx]
+        img   = Image.open(pth).convert('RGB')
+        x     = val_tf(img).unsqueeze(0).to(device)
+
+        model.zero_grad()
+        logits = model(x)
+        logits[0, CFG.pos_cls].backward()
+
+        A, G  = acts[0], grads[0]
+        w     = G.mean(dim=(2,3), keepdim=True)
+        cam   = (w*A).sum(1, keepdim=True).relu()
+        cam   = F.interpolate(cam,(img.size[1],img.size[0]),
+                              mode='bilinear',align_corners=False)[0,0].cpu().numpy()
+        cam   = (cam-cam.min())/(cam.max()+1e-9)
+
+        plt.figure(figsize=(3,3)); plt.imshow(img)
+        plt.imshow(cam,cmap='jet',alpha=.5); plt.axis('off')
+        plt.tight_layout(pad=0)
+        plt.savefig(f'{save_dir}/{os.path.basename(pth)}',dpi=300); plt.close()
+    h.remove()
+    print(f'Activation heatmaps saved to \"{save_dir}/\"')
+
 # ---------- MAIN --------------------------------------------------------------------
 def main():
     global CFG
@@ -174,29 +210,24 @@ def main():
     model.fc=nn.Linear(model.fc.in_features,CFG.n_classes); model=_compile(model.to(device))
 
     model,hist=train(model,dls,sizes); plot_hist(hist)
-
-    # Tune threshold on validation
     yv,pv=get_preds(model,dls['val']); th=optimal_th(yv,pv)
     print(f'Optimal threshold = {th:.3f}')
 
-    # ---- evaluate all sets & thresholds (+ save CMs) --------------------------------
     rows=[]; sets=[('TRN',dls['train']),('VAL',dls['val']),('EXT',dls['external_val'])]
     for lbl,dl in sets:
         for tname,t in [('0.5',.5),('opt',th)]:
             res,y,ŷ=eval_phase(model,dl,t); name=f'{lbl}_{tname}'
-            # store table
             rows.extend([dict(set=name,metric=m,value=v,ci_low=l,ci_high=u)
                          for m,(v,(l,u)) in res.items()])
-            # save confusion matrix
             cm_plot(y, ŷ, name)
-            # console print
             print(f'\n{name}')
             for k,(v,(l,u)) in res.items(): print(f' {k:20s}: {v:.4f} ({l:.4f},{u:.4f})')
 
-    # ---- CSV ------------------------------------------------------------------------
     pd.DataFrame(rows).to_csv(f'metrics_{CFG.tag}.csv',index=False)
     print(f'\nMetrics saved to metrics_{CFG.tag}.csv')
     print('All confusion matrices saved (one image per split & threshold).')
+
+    save_heatmaps(model, imgs['val'])
 
 if __name__=='__main__':
     warnings.filterwarnings("ignore",category=UserWarning)
