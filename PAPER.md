@@ -50,7 +50,7 @@ Imaging was performed on a Hologic Selenia Dimension system. After intravenous i
 Because the dataset is small, late low-dose images acquired 7 minutes after contrast injection were also retained. The impact of mixing early and late phases is unknown and is considered a limitation. Only recombined (subtracted) images of the tumour-bearing breast were analysed; low-energy images and all contralateral views were excluded.
 
 ![Overview Figure](overview-figure.png)
-**Figure 1.** Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, patient-level splitting, and inference.
+**Figure 1.** Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.
 
 ### Region-of-interest definition and preprocessing
 Enhancing lesions were localised on the recombined images and cropped manually with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately.
@@ -58,7 +58,7 @@ Enhancing lesions were localised on the recombined images and cropped manually w
 Input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
 
 ![raw-cems](raw-cems.png)
-**Figure 2.** Representative early- and late-phase recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.
+**Figure 2.** Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.
 
 ![cropped-cems](cropped-cems.png)
 **Figure 3.** Examples of manually cropped regions of interest (ROIs) that were used as model input.
