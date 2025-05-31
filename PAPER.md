@@ -1,6 +1,7 @@
 ---
 title: "Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study"
 bibliography: citations.bib
+csl: cit-style.csl
 ---
 
 ## Abstract
