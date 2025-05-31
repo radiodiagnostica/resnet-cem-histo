@@ -1,4 +1,7 @@
-# Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study
+---
+title: "Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study"
+bibliography: citations.bib
+---
 
 ## Abstract
 
@@ -24,11 +27,11 @@ Implementation: A ResNet-18 was trained with weighted loss and patient-level dat
 
 ## Introduction
 
-Breast cancer is the most frequently diagnosed malignancy worldwide, with about 2.3 million new cases and 685 000 deaths in 2022 according to the latest WHO fact-sheet [1]. Because the disease is biologically heterogeneous, expression of the oestrogen (ER) and progesterone (PR) receptors—summarised as hormone-receptor (HR) status—remains a pivotal determinant of systemic-treatment strategy and prognosis [2]. HR status is routinely assessed on tissue obtained by core biopsy or surgery, but this invasive approach is time-consuming, prone to sampling error and limited in its ability to capture spatial heterogeneity [3, 4]. A rapid, image-based surrogate could therefore complement or, in selected scenarios, reduce the need for tissue sampling.
+Breast cancer is the most frequently diagnosed malignancy worldwide, with about 2.3 million new cases and 685 000 deaths in 2022 according to the latest WHO fact-sheet [@world_health_organization_breast_nodate]. Because the disease is biologically heterogeneous, expression of the oestrogen (ER) and progesterone (PR) receptors—summarised as hormone-receptor (HR) status—remains a pivotal determinant of systemic-treatment strategy and prognosis [@harbeck_breast_2017]. HR status is routinely assessed on tissue obtained by core biopsy or surgery, but this invasive approach is time-consuming, prone to sampling error and limited in its ability to capture spatial heterogeneity [@viale_current_2012; @bedard_tumour_2013]. A rapid, image-based surrogate could therefore complement or, in selected scenarios, reduce the need for tissue sampling.
 
-Contrast-enhanced mammography (CEM) merges dual-energy X-ray acquisition with an iodinated contrast bolus, highlighting lesion vascularity in a workflow that is faster and more widely available than MRI. Early clinical series reported higher sensitivity for lesion detection, particularly in dense breasts [5, 6], and recent reviews underline continued technical progress together with the emerging role of artificial-intelligence (AI) tools in CEM interpretation [7, 8].
+Contrast-enhanced mammography (CEM) merges dual-energy X-ray acquisition with an iodinated contrast bolus, highlighting lesion vascularity in a workflow that is faster and more widely available than MRI. Early clinical series reported higher sensitivity for lesion detection, particularly in dense breasts [@lobbes_contrast_2013; @fallenberg_contrast-enhanced_2014], and recent reviews underline continued technical progress together with the emerging role of artificial-intelligence (AI) tools in CEM interpretation [@sorin_deep_2025; @covington_state_art_2024].
 
-Concurrently, deep learning—especially convolutional neural networks (CNNs)—has transformed medical-image analysis. Surveys document expert-level performance across radiology domains [9]; ResNet and related architectures are now de-facto baselines for image-classification tasks [10], and have already improved breast-cancer risk prediction on screening mammography [11]. Several groups have extended these methods to molecular profiling. Zeng et al. predicted ER, PR and HER2 expression from digital mammograms (AUC up to 0.80) [12]. Huang et al. and Ming et al. used dynamic-contrast MRI radiomics or multi-scale CNNs to distinguish luminal from non-luminal cancers or to infer PAM50 subtypes [13, 14]. Within the smaller CEM literature, Fanizzi et al. proposed a radiomics-based malignancy detector [15]; Marino et al. applied texture analysis for molecular-subtype differentiation [16]; and Dominique et al. trained a shallow CNN on full-field recombined CEM images to classify ER positivity and triple-negative phenotype [17].
+Concurrently, deep learning—especially convolutional neural networks (CNNs)—has transformed medical-image analysis. Surveys document expert-level performance across radiology domains [@litjens_survey_2017]; ResNet and related architectures are now de-facto baselines for image-classification tasks [@he_deep_2016], and have already improved breast-cancer risk prediction on screening mammography [@yala_deep_2019]. Several groups have extended these methods to molecular profiling. Zeng et al. predicted ER, PR and HER2 expression from digital mammograms (AUC up to 0.80) [@zeng_assessment_2025]. Huang et al. and Ming et al. used dynamic-contrast MRI radiomics or multi-scale CNNs to distinguish luminal from non-luminal cancers or to infer PAM50 subtypes [@huang_application_2023; @ming_predicting_2022]. Within the smaller CEM literature, Fanizzi et al. proposed a radiomics-based malignancy detector [@fanizzi_fully_2019]; Marino et al. applied texture analysis for molecular-subtype differentiation [@marino_contrast-enhanced_2020]; and Dominique et al. trained a shallow CNN on full-field recombined CEM images to classify ER positivity and triple-negative phenotype [@dominique_deep_2022].
 
 Collectively, these investigations have moved the field forward but share several limitations: they are predominantly single-centre, rely on modest sample sizes, and often exhibit pronounced class imbalance. They also typically report only accuracy and AUC without imbalance-aware metrics such as balanced accuracy or the Matthews correlation coefficient.
 
@@ -51,19 +54,16 @@ Because the dataset is small, late low-dose images acquired 7 minutes after cont
 
 Images included in the analysis were those deemed clinically acceptable at the time of acquisition; however, a formal secondary review for subtle artifacts or image quality scoring specifically for this research study was not performed.
 
-![Overview Figure](overview-figure.png)
-**Figure 1.** Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.
+![Figure 1. Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.](overview-figure.png)
 
 ### Region-of-interest definition and preprocessing
 Enhancing lesions were localised on the recombined images and cropped manually with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately. The precise extent of the surrounding tissue and the approach in cases of very high or heterogeneous background parenchymal enhancement were based on the operator's judgment to best encompass the visible lesion, which may introduce some variability.
 
 Input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
 
-![raw-cems](raw-cems.png)
-**Figure 2.** Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.
+![Figure 2. Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.](raw-cems.png)
 
-![cropped-cems](cropped-cems.png)
-**Figure 3.** Examples of manually cropped regions of interest (ROIs) that were used as model input.
+![Figure 3. Examples of manually cropped regions of interest (ROIs) that were used as model input.](cropped-cems.png)
 
 ### Dataset split
 From the **105 patients (88 HR-positive, 17 HR-negative)**, images were derived. Patients were randomly assigned, stratified by HR status, to a **training set (68 patients: 57 HR-positive, 11 HR-negative; yielding 249 images: 213 HR-positive, 36 HR-negative)**, a **validation set (16 patients: 13 HR-positive, 3 HR-negative; yielding 61 images: 52 HR-positive, 9 HR-negative)** and an **independent-test set (21 patients: 18 HR-positive, 3 HR-negative; yielding 74 images: 64 HR-positive, 10 HR-negative)**. HR-positive cases comprised ~85 % of patients in every subset. This patient-level split ensures that images from the same patient do not appear in multiple subsets, mitigating information leakage. While this stratification aimed to balance the primary outcome, a detailed characterization of other clinical or imaging features (e.g., tumor size, grade, background enhancement) across the splits was beyond the scope of this preliminary study and represents a potential source of unassessed variability.
@@ -86,15 +86,12 @@ The training process over 30 epochs is illustrated in **Figure 4**. Weighted cro
 
 Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30 (**Figure 4B**). The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (**Figure 4B**). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. This epoch-specific training PR-AUC of 0.8296 reflects the metric as tracked during the training process for model selection purposes; the performance of this final selected model on the full training set using the optimized threshold is reported in Table 2 as 0.9126. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
 
-![train_hist_resnet18_rep.png](train_hist_resnet18_rep.png)
-**Figure 4.** Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.
+![Figure 4. Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.](train_hist_resnet18_rep.png)
 
 ### Final model performance
 An optimal classification threshold of 0.829 was determined from the validation set based on maximizing the F1-score for the HR-negative class. Table 2 presents the discrimination results with 95 % bootstrap confidence intervals for the training, validation, and independent-test sets, comparing performance using a standard 0.5 threshold and this optimal threshold.
 
 The modest gap between overall accuracy and balanced accuracy on the test set with the optimal threshold (91.9% vs 70.0%) highlights that while overall correct classification is high, performance on the minority class (HR-negative, recall 0.40 with optimal threshold, see full results for details) is more limited, as expected with high class imbalance, despite weighted loss and threshold optimization. Specificity (recall for HR-positive, the majority class) was 1.0000 on the test set with the optimal threshold.
-
-**Table 2.** Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.829) derived from the validation set. Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class.
 
 | Metric              | Training (0.5 th.)       | Training (opt th. 0.829) | Validation (0.5 th.)     | Validation (opt th. 0.829)| Test (0.5 th.)           | Test (opt th. 0.829)      |
 |---------------------|--------------------------|---------------------------|--------------------------|---------------------------|--------------------------|---------------------------|
@@ -104,10 +101,11 @@ The modest gap between overall accuracy and balanced accuracy on the test set wi
 | AUC-ROC             | 0.8558 (0.8064–0.8986)   | 0.8841 (0.8359–0.9232)    | 0.7821 (0.5667–0.9709)   | 0.7821 (0.5667–0.9709)    | 0.8078 (0.6482–0.9351)   | 0.8078 (0.6482–0.9351)    |
 | **PR-AUC (HR-neg)** | **0.8732 (0.8260–0.9189)** | **0.9126 (0.8728–0.9431)** | **0.6402 (0.3044–0.9056)** | **0.6402 (0.3044–0.9056)** | **0.5817 (0.2754–0.8267)** | **0.5817 (0.2754–0.8267)** |
 
+Table: Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.829) derived from the validation set. Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class. {#tbl:results}
+
 **Figure 5** shows Grad-CAM visualisations for representative cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
-![activated-cropped-cems](activated-cropped-cems.png)
-**Figure 5.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
+![Figure 5. Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.](activated-cropped-cems.png)
 
 ### Computational aspects
 Complete training (30 epochs) required approximately 10 minutes on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
@@ -116,7 +114,7 @@ Complete training (30 epochs) required approximately 10 minutes on an Apple M2 l
 
 In this retrospective proof-of-concept we show that a ResNet-18, trained with patient-level data splits and weighted loss, achieves 91.9 % accuracy and an AUC-ROC of 0.81 on an independent-test set (using an optimized threshold) when predicting hormone-receptor (HR) status. Reporting balanced accuracy (0.70) and Matthews correlation coefficient (0.60) alongside conventional metrics provides additional insight into model behaviour under the pronounced class imbalance (~85 % HR-positive). The use of patient-level splitting in this study ensures reliable estimates of model performance.
 
-When placed beside the literature, performance is broadly comparable, although direct comparisons remain challenging. Dominique et al. obtained an AUC of 0.82 for ER prediction using full-field CEM images [17]; Marino et al. reported radiomics-based AUCs between 0.77 and 0.83 for molecular subtyping [16]; and Zeng et al. reached up to 0.80 for ER, PR and HER2 prediction on standard mammography [12]. Our AUC-ROC of 0.81 is in line with these findings. The use of an optimized threshold significantly improved accuracy (from 62.2% to 91.9% on the test set) by heavily favoring the majority class prediction (specificity 1.0), though balanced accuracy and MCC highlight the ongoing challenge with minority class prediction (HR-negative recall was 0.40).
+When placed beside the literature, performance is broadly comparable, although direct comparisons remain challenging. Dominique et al. obtained an AUC of 0.82 for ER prediction using full-field CEM images [@dominique_deep_2022]; Marino et al. reported radiomics-based AUCs between 0.77 and 0.83 for molecular subtyping [@marino_contrast-enhanced_2020]; and Zeng et al. reached up to 0.80 for ER, PR and HER2 prediction on standard mammography [@zeng_assessment_2025]. Our AUC-ROC of 0.81 is in line with these findings. The use of an optimized threshold significantly improved accuracy (from 62.2% to 91.9% on the test set) by heavily favoring the majority class prediction (specificity 1.0), though balanced accuracy and MCC highlight the ongoing challenge with minority class prediction (HR-negative recall was 0.40).
 
 Several considerations temper the interpretation of our findings. First, the study draws on a small single-centre cohort (105 patients), so external validity remains uncertain. Second, patient-level randomization was employed to ensure robust evaluation. However, the manual ROI delineation, particularly in the presence of variable background enhancement, relied on operator judgment and could introduce variability not explicitly quantified in this study. Other limitations include the retention of late low-dose images (acquired seven minutes after contrast injection in addition to standard **two-minute** images) to enlarge the dataset; the influence of mixing phases is unknown but may have introduced unwanted variation. Third, lesion patches were resized with `RandomResizedCrop` during training, which can subtly stretch or compress the tumour; the impact of this variable aspect ratio has not been quantified. Fourth, HR labels were copied verbatim from pathology reports without a uniform immunohistochemical threshold, introducing potential label noise. Fifth, differences in acquisition timing, injection rate, and detector technology could affect generalisability. Finally, no parallel analysis of MRI or ultrasound was performed, so the relative diagnostic contribution of CEM cannot be inferred from this work.
 
@@ -131,21 +129,4 @@ Interpretation, however, must remain cautious. The dataset is small and originat
 Even so, the study offers a transparent baseline and emphasises the importance of reporting imbalance-aware metrics and employing sound validation strategies in molecular-imaging AI. Extending this work to multi-centre cohorts, harmonised CEM protocols, patient-level splits and automatic lesion localisation will be essential next steps toward assessing whether CEM-based deep learning can contribute meaningfully to non-invasive tumour characterisation in clinical practice.
 
 ## Bibliography
-
-[1]: World Health Organization. Breast cancer – Key facts. Geneva: WHO; 2023.
-[2]: Harbeck N, Gnant M. Breast cancer. *Lancet*. 2017;389:1134-1150.
-[3]: Viale G. The current state of breast-cancer classification. *Ann Oncol*. 2012;23:x207-x210.
-[4]: Bedard PL, Hansen AR, Ratain MJ, Siu LL. Tumour heterogeneity in the clinic. *Nature*. 2013;501:355-364.
-[5]: Lobbes MB, Smidt ML, Houwers J, et al. Contrast-enhanced mammography: techniques and initial results. *Clin Radiol*. 2013;68:935-944.
-[6]: Fallenberg EM, Dromain C, Diekmann F, et al. Contrast-enhanced spectral mammography versus MRI for tumour detection and size assessment. *Eur Radiol*. 2014;24:256-264.
-[7]: Sorin V, Sklair-Levy M, Glicksberg BS, Konen E, Nadkarni GN, Klang E. Deep Learning for Contrast Enhanced Mammography - A Systematic Review. *Acad Radiol.* 2025;32(5):2497-2508.
-[8]: Covington MF, Salmon S, Weaver BD, Fajardo LL. State-of-the-art for contrast-enhanced mammography. *Br J Radiol.* 2024;97(1156):695-704.
-[9]: Litjens G, Kooi T, Bejnordi BE, et al. A survey on deep learning in medical image analysis. *Med Image Anal*. 2017;42:60-88.
-[10]: He K, Zhang X, Ren S, Sun J. Deep residual learning for image recognition. In: *Proc CVPR 2016*;770-778.
-[11]: Yala A, Lehman C, Schuster T, Portnoi T, Barzilay R. A deep-learning mammography model for improved breast-cancer risk prediction. *Radiology*. 2019;292:60-66.
-[12]: Zeng S, Chen H, Jing R, et al. Deep learning assessment of ER, PR and HER2 from mammography. *Sci Rep*. 2025;15:4826.
-[13]: Huang T, Fan B, Qiu Y, et al. DCE-MRI radiomics for molecular-subtype differentiation. *Front Med*. 2023;10:1140514.
-[14]: Ming W, Li F, Zhu Y, et al. Predicting hormone receptors and PAM50 subtypes from multi-scale DCE-MRI with transfer learning. *Comput Biol Med*. 2022;150:106147.
-[15]: Fanizzi A, Losurdo L, Basile TMA, et al. Fully automated support system for breast-cancer diagnosis in contrast-enhanced spectral mammography. *J Clin Med*. 2019;8:891.
-[16]: Marino MA, Pinker K, Leithner D, et al. Contrast-enhanced mammography and radiomics analysis for non-invasive breast-cancer characterisation: initial results. *Mol Imaging Biol*. 2020;22:780-787.
-[17]: Dominique C, Callonnec F, Berghian A, et al. Deep-learning analysis of contrast-enhanced spectral mammography to determine histoprognostic factors. *Eur Radiol*. 2022;32:4834-4844.
+<!-- This section will be automatically generated -->
