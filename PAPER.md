@@ -71,7 +71,7 @@ From the **105 patients (88 HR-positive, 17 HR-negative)**, images were derived.
 ### Convolutional-network architecture and training
 A ResNet-18 pretrained on ImageNet served as backbone. The original fully connected layer was replaced by a single linear layer mapping ResNet-18's 512 features to 2 (number of classes). The entire network was fine-tuned.
 
-Training used the Adam optimiser with an initial learning rate of 1 × 10⁻⁵ and weight-decay of 5 × 10⁻⁴. A ReduceLROnPlateau scheduler reduced the learning rate by a factor of 0.1 after seven epochs without improvement in validation PR-AUC (HR-negative as positive class). The loss function was weighted cross-entropy (weights 1.0 for HR-positive, 2.5 for HR-negative); mini-batch size was 4; and training ran for up to 30 epochs. The network snapshot that achieved the highest validation PR-AUC was retained.
+Training used the Adam optimiser with an initial learning rate of 1 × 10⁻⁵ and weight-decay of 5 × 10⁻⁴. A ReduceLROnPlateau scheduler reduced the learning rate by a factor of 0.1 after seven epochs without improvement in validation PR-AUC (HR-negative as positive class). The loss function was weighted cross-entropy (weights 1.0 for HR-positive, 2.5 for HR-negative); mini-batch size was 4; and training ran for up to 30 epochs. Training and validation loss, as well as training and validation PR-AUC, were recorded at each epoch. The network snapshot that achieved the highest validation PR-AUC was retained.
 
 ### Performance metrics and statistical analysis
 Performance on the training, validation and independent-test sets was summarised with: accuracy, specificity (recall for HR-positive), area under the precision-recall curve (PR-AUC, HR-negative as positive class), balanced accuracy, Matthews correlation coefficient (MCC) and the area under the receiver-operating-characteristic curve (AUC-ROC). Precision, recall, and F1-score for both HR-positive and HR-negative classes were also calculated. Ninety-five-percent confidence intervals (95 % CI) were calculated with 1000-iteration non-parametric bootstrap. An optimal classification threshold was determined on the validation set by maximizing the F1-score for the HR-negative class, and performance on all sets is reported using this optimal threshold alongside the standard 0.5 threshold. No hypothesis tests or p-values are reported, as only a single model was evaluated.
@@ -82,7 +82,12 @@ The pipeline is implemented in Python with PyTorch; full requirements and source
 ## Results
 
 ### Training behaviour
-The weighted cross-entropy loss on the training set and validation set decreased over epochs (details omitted for brevity, plots available). The validation PR-AUC (HR-negative as positive class), used as the criterion for model selection, reached a maximum of 0.6402 at epoch 30. The learning rate was not reduced during training.
+The training process over 30 epochs is illustrated in **Figure 4**. Weighted cross-entropy loss for the training set generally decreased from an initial 0.6599 (epoch 1) to 0.4803 at epoch 30. Validation loss showed more fluctuation but ended at 0.5877 at epoch 30, having started at 0.8652 (epoch 1) and experiencing some peaks (e.g., 1.2886 at epoch 4) (**Figure 4A**).
+
+Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30. The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (**Figure 4B**). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
+
+![train_hist_resnet18_rep.png](train_hist_resnet18_rep.png)
+**Figure 4.** Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.
 
 ### Final model performance
 An optimal classification threshold of 0.829 was determined from the validation set based on maximizing the F1-score for the HR-negative class. Discrimination results with 95 % bootstrap confidence intervals for the independent-test set using this optimal threshold are listed in Table 2. For comparison, results using a standard 0.5 threshold are also provided where relevant.
@@ -104,10 +109,10 @@ The modest gap between overall accuracy and balanced accuracy on the test set wi
 
 **Table 2.** Performance metrics for the final ResNet-18 model using the optimal threshold (0.829); values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class.
 
-Figure 4 shows Grad-CAM visualisations for representative correctly and incorrectly classified cases, illustrating that network attention generally overlaps the enhancing tumour region.
+**Figure 5** shows Grad-CAM visualisations for representative correctly and incorrectly classified cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
 ![activated-cropped-cems](activated-cropped-cems.png)
-**Figure 4.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
+**Figure 5.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
 
 ### Computational aspects
 Complete training (30 epochs) required approximately 10 minutes on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
