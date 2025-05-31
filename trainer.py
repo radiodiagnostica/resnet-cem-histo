@@ -88,7 +88,7 @@ def _all_metrics(y,ŷ,p):
                 precision_hr_plus =prec[0], recall_hr_plus =rec[0], f1_hr_plus =f1[0],
                 precision_hr_minus=prec[1], recall_hr_minus=rec[1], f1_hr_minus=f1[1])
 
-def ci(v): l,u=np.percentile(v,[100*CFG.ci/2,100*(1-CFG.ci/2)]); return (l,u)
+def ci(v): l,u=np.percentile(v,[100*(1-CFG.ci)/2,100*(1+CFG.ci)/2]); return (l,u)
 
 # ---------- DATA --------------------------------------------------------------------
 def get_dls():
