@@ -132,20 +132,20 @@ Even so, the study offers a transparent baseline and emphasises the importance o
 
 ## Bibliography
 
-[1]: World Health Organization. Breast cancer – Key facts. Geneva: WHO; 2023.
-[2]: Harbeck N, Gnant M. Breast cancer. *Lancet*. 2017;389:1134-1150.
-[3]: Viale G. The current state of breast-cancer classification. *Ann Oncol*. 2012;23:x207-x210.
-[4]: Bedard PL, Hansen AR, Ratain MJ, Siu LL. Tumour heterogeneity in the clinic. *Nature*. 2013;501:355-364.
-[5]: Lobbes MB, Smidt ML, Houwers J, et al. Contrast-enhanced mammography: techniques and initial results. *Clin Radiol*. 2013;68:935-944.
-[6]: Fallenberg EM, Dromain C, Diekmann F, et al. Contrast-enhanced spectral mammography versus MRI for tumour detection and size assessment. *Eur Radiol*. 2014;24:256-264.
-[7]: Sorin V, Sklair-Levy M, Glicksberg BS, Konen E, Nadkarni GN, Klang E. Deep Learning for Contrast Enhanced Mammography - A Systematic Review. *Acad Radiol.* 2025;32(5):2497-2508.
-[8]: Covington MF, Salmon S, Weaver BD, Fajardo LL. State-of-the-art for contrast-enhanced mammography. *Br J Radiol.* 2024;97(1156):695-704.
-[9]: Litjens G, Kooi T, Bejnordi BE, et al. A survey on deep learning in medical image analysis. *Med Image Anal*. 2017;42:60-88.
-[10]: He K, Zhang X, Ren S, Sun J. Deep residual learning for image recognition. In: *Proc CVPR 2016*;770-778.
-[11]: Yala A, Lehman C, Schuster T, Portnoi T, Barzilay R. A deep-learning mammography model for improved breast-cancer risk prediction. *Radiology*. 2019;292:60-66.
-[12]: Zeng S, Chen H, Jing R, et al. Deep learning assessment of ER, PR and HER2 from mammography. *Sci Rep*. 2025;15:4826.
-[13]: Huang T, Fan B, Qiu Y, et al. DCE-MRI radiomics for molecular-subtype differentiation. *Front Med*. 2023;10:1140514.
-[14]: Ming W, Li F, Zhu Y, et al. Predicting hormone receptors and PAM50 subtypes from multi-scale DCE-MRI with transfer learning. *Comput Biol Med*. 2022;150:106147.
-[15]: Fanizzi A, Losurdo L, Basile TMA, et al. Fully automated support system for breast-cancer diagnosis in contrast-enhanced spectral mammography. *J Clin Med*. 2019;8:891.
-[16]: Marino MA, Pinker K, Leithner D, et al. Contrast-enhanced mammography and radiomics analysis for non-invasive breast-cancer characterisation: initial results. *Mol Imaging Biol*. 2020;22:780-787.
-[17]: Dominique C, Callonnec F, Berghian A, et al. Deep-learning analysis of contrast-enhanced spectral mammography to determine histoprognostic factors. *Eur Radiol*. 2022;32:4834-4844.
+[1]: https://www.who.int/news-room/fact-sheets/detail/breast-cancer
+[2]: 10.1016/S0140-6736(16)31891-8
+[3]: 10.1093/annonc/mds326
+[4]: 10.1038/nature12627
+[5]: 10.1016/j.crad.2013.04.009
+[6]: 10.1007/s00330-013-3007-7
+[7]: 10.1016/j.acra.2024.11.035
+[8]: 10.1093/bjr/tqae017
+[9]: 10.1016/j.media.2017.07.005
+[10]: 10.1109/CVPR.2016.90
+[11]: 10.1148/radiol.2019182716
+[12]: 10.1038/s41598-024-83597-9
+[13]: 10.3389/fmed.2023.1140514.
+[14]: 10.1016/j.compbiomed.2022.106147
+[15]: 10.3390/jcm8060891
+[16]: 10.1007/s11307-019-01423-5
+[17]: 10.1007/s00330-022-08538-4
