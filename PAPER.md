@@ -4,7 +4,7 @@ bibliography: citations.bib
 csl: cit-style.csl
 ---
 
-## Abstract
+**Abstract:**
 
 **Background**: Hormone-receptor (HR) status steers systemic therapy in breast cancer but is currently obtained invasively. Contrast-enhanced mammography (CEM) might offer a non-invasive surrogate if coupled with deep learning. This study investigates this potential using patient-level data splitting to prevent information leakage.
 
@@ -14,17 +14,17 @@ csl: cit-style.csl
 
 **Conclusion**: A ResNet-18 fine-tuned with appropriate handling of class imbalance and utilizing patient-level data splitting can capture CEM features related to HR status, performing well even under pronounced class imbalance. The patient-level split provides a robust estimate of generalisability. Small single-centre size and the mixture of early and late CEM phases still limit generalisability; larger multi-institution cohorts are required.
 
-## Key points
+**Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammogra-phy, Artificial Intelligence, Precision Medicine.
+
+**Key points:**
 
 *   ResNet-18 predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an optimized threshold and patient-level splitting.
 *   Balanced accuracy (0.70) and MCC (0.60) demonstrate maintained discrimination despite an approximate 85 % class imbalance (HR-positive cases).
 *   Patient-level splitting was employed to ensure robust evaluation. Study limitations include small single-centre dataset and mixing of early- and late-phase CEM images.
 
-## Relevance statement
+**Relevance statement:**
 
-Concept: This work explores whether routinely acquired CEM images contain enough information for deep-learning prediction of hormone-receptor status, aiming at a less invasive complement to biopsy.
-
-Implementation: A ResNet-18 was trained with weighted loss and patient-level data splits; performance was quantified with imbalance-aware metrics to provide a realistic assessment in a highly skewed dataset, highlighting both the promise and current constraints of CEM-based molecular imaging.
+This work explores whether routinely acquired CEM images contain enough information for deep-learning prediction of hormone-receptor status, aiming at a less invasive complement to biopsy. A ResNet-18 was trained with weighted loss and patient-level data splits; performance was quantified with imbalance-aware metrics to provide a realistic assessment in a highly skewed dataset, highlighting both the promise and current constraints of CEM-based molecular imaging.
 
 ## Introduction
 
