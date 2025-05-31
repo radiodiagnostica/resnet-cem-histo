@@ -3,6 +3,7 @@ title: "Exploring the Potential of Deep Learning in Predicting Hormone Receptor 
 bibliography: citations.bib
 csl: cit-style.csl
 ---
+<!-- Convert with: "pandoc PAPER.md --filter pandoc-crossref --citeproc --reference-doc=word_template.docx -o paper.docx -N" -->
 
 **Abstract:**
 
