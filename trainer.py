@@ -125,9 +125,21 @@ def train(model,dls,sizes):
             if phase=='train': hist['tr_loss'].append(ep_loss); hist['tr_met'].append(met)
             else: hist['va_loss'].append(ep_loss); hist['va_met'].append(met); sch.step(met)
             if phase=='val' and met>best: best,bw=met,copy.deepcopy(model.state_dict())
-        print(f'Epoch {ep}/{CFG.epochs} | best {CFG.best_metric}: {best:.4f}')
+        
+        print(f'E{ep:02d}/{CFG.epochs} | tr_loss {hist["tr_loss"][-1]:.4f} '
+              f'va_loss {hist["va_loss"][-1]:.4f} | tr_{CFG.best_metric} '
+              f'{hist["tr_met"][-1]:.4f} va_{CFG.best_metric} '
+              f'{hist["va_met"][-1]:.4f} | best {best:.4f}')
+
         if opt.param_groups[0]['lr']<CFG.lr*1e-3: break
     model.load_state_dict(bw); torch.save(bw,f'best_model_{CFG.tag}.pth')
+    
+    pd.DataFrame({'epoch':range(1,len(hist['tr_loss'])+1),
+                  'tr_loss':hist['tr_loss'],'va_loss':hist['va_loss'],
+                  f'tr_{CFG.best_metric}':hist['tr_met'],
+                  f'va_{CFG.best_metric}':hist['va_met']}
+                ).to_csv(f'epoch_metrics_{CFG.tag}.csv',index=False)
+    
     return model,hist
 
 # ---------- EVAL --------------------------------------------------------------------
