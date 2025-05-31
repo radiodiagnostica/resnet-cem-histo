@@ -138,8 +138,8 @@ Even so, the study offers a transparent baseline and emphasises the importance o
 [4]: Bedard PL, Hansen AR, Ratain MJ, Siu LL. Tumour heterogeneity in the clinic. *Nature*. 2013;501:355-364.
 [5]: Lobbes MB, Smidt ML, Houwers J, et al. Contrast-enhanced mammography: techniques and initial results. *Clin Radiol*. 2013;68:935-944.
 [6]: Fallenberg EM, Dromain C, Diekmann F, et al. Contrast-enhanced spectral mammography versus MRI for tumour detection and size assessment. *Eur Radiol*. 2014;24:256-264.
-[7]: Houben IP, Karssemeijer N, Samulski M, et al. Artificial intelligence in contrast-enhanced mammography: a systematic review. *Artif Intell Rev*. 2023.
-[8]: Bashir MR, Vrees MD, Robinson TJ, et al. Technical innovations in contrast-enhanced mammography. *Eur Radiol*. 2023.
+[7]: Sorin V, Sklair-Levy M, Glicksberg BS, Konen E, Nadkarni GN, Klang E. Deep Learning for Contrast Enhanced Mammography - A Systematic Review. *Acad Radiol.* 2025;32(5):2497-2508.
+[8]: Covington MF, Salmon S, Weaver BD, Fajardo LL. State-of-the-art for contrast-enhanced mammography. *Br J Radiol.* 2024;97(1156):695-704.
 [9]: Litjens G, Kooi T, Bejnordi BE, et al. A survey on deep learning in medical image analysis. *Med Image Anal*. 2017;42:60-88.
 [10]: He K, Zhang X, Ren S, Sun J. Deep residual learning for image recognition. In: *Proc CVPR 2016*;770-778.
 [11]: Yala A, Lehman C, Schuster T, Portnoi T, Barzilay R. A deep-learning mammography model for improved breast-cancer risk prediction. *Radiology*. 2019;292:60-66.
