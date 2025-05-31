@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-#  Hormone-receptor (HR) prediction – compact v5.2  +  Grad-CAM
+#  Hormone-receptor (HR) prediction – v6.0  (prob.-calibrated)
 # ------------------------------------------------------------
 from __future__ import annotations
 import os, copy, random, argparse, warnings
@@ -37,38 +37,25 @@ CFG = CFG()
 torch.set_float32_matmul_precision('high')
 device=torch.device('mps' if torch.backends.mps.is_available()
                     else ('cuda' if torch.cuda.is_available() else 'cpu'))
-
 compile_ok=(device.type!='mps') and hasattr(torch,'compile')
 def _compile(m): return torch.compile(m) if compile_ok else m
 
 # ---------- SEED --------------------------------------------------------------------
 def set_seed(seed:int):
-    """(Re)seed every RNG we rely on."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if device.type=='cuda':
-        torch.cuda.manual_seed_all(seed)
+    torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
+    if device.type=='cuda': torch.cuda.manual_seed_all(seed)
 
 # ---------- TRANSFORMS --------------------------------------------------------------
 def build_transforms():
-    """Build data-augmentation / validation transforms based on *current* CFG."""
     norm  = transforms.Normalize([.485,.456,.406],[.229,.224,.225])
     aug   = transforms.Compose([
-                transforms.Grayscale(3),
-                transforms.RandomResizedCrop(CFG.img_sz),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomRotation(15),
-                transforms.ColorJitter(.1,.1),
-                transforms.ToTensor(), norm
-            ])
-    val_tf = transforms.Compose([
-                transforms.Grayscale(3),
-                transforms.Resize(256),
-                transforms.CenterCrop(CFG.img_sz),
-                transforms.ToTensor(), norm
-             ])
-    return norm, aug, val_tf, {'train': aug, 'val': val_tf, 'external_val': val_tf}
+            transforms.Grayscale(3), transforms.RandomResizedCrop(CFG.img_sz),
+            transforms.RandomHorizontalFlip(), transforms.RandomRotation(15),
+            transforms.ColorJitter(.1,.1), transforms.ToTensor(), norm])
+    val_tf= transforms.Compose([
+            transforms.Grayscale(3), transforms.Resize(256),
+            transforms.CenterCrop(CFG.img_sz), transforms.ToTensor(), norm])
+    return norm, aug, val_tf, {'train':aug,'val':val_tf,'external_val':val_tf}
 
 norm, aug, val_tf, dtrans = build_transforms()
 
@@ -125,22 +112,38 @@ def train(model,dls,sizes):
             if phase=='train': hist['tr_loss'].append(ep_loss); hist['tr_met'].append(met)
             else: hist['va_loss'].append(ep_loss); hist['va_met'].append(met); sch.step(met)
             if phase=='val' and met>best: best,bw=met,copy.deepcopy(model.state_dict())
-        
         print(f'E{ep:02d}/{CFG.epochs} | tr_loss {hist["tr_loss"][-1]:.4f} '
               f'va_loss {hist["va_loss"][-1]:.4f} | tr_{CFG.best_metric} '
               f'{hist["tr_met"][-1]:.4f} va_{CFG.best_metric} '
               f'{hist["va_met"][-1]:.4f} | best {best:.4f}')
-
         if opt.param_groups[0]['lr']<CFG.lr*1e-3: break
     model.load_state_dict(bw); torch.save(bw,f'best_model_{CFG.tag}.pth')
-    
     pd.DataFrame({'epoch':range(1,len(hist['tr_loss'])+1),
                   'tr_loss':hist['tr_loss'],'va_loss':hist['va_loss'],
                   f'tr_{CFG.best_metric}':hist['tr_met'],
                   f'va_{CFG.best_metric}':hist['va_met']}
                 ).to_csv(f'epoch_metrics_{CFG.tag}.csv',index=False)
-    
     return model,hist
+
+# ---------- CALIBRATION -------------------------------------------------------------
+class ModelWithTemperature(nn.Module):
+    """Temperature scaling (Guo et al. 2017) – 1-param calibration."""
+    def __init__(self, model):
+        super().__init__(); self.model=model; self.temperature=nn.Parameter(torch.ones(1)*1.5)
+    def forward(self,x): return self.model(x)/self.temperature
+    def set_temperature(self,loader):
+        self.eval(); logits,labels=[],[]
+        with torch.no_grad():
+            for x,y in loader:
+                logits.append(self.model(x.to(device))); labels.append(y.to(device))
+        logits=torch.cat(logits); labels=torch.cat(labels)
+        nll=nn.CrossEntropyLoss(); optT=optim.LBFGS([self.temperature],lr=.01,max_iter=50)
+        def _closure():
+            optT.zero_grad()
+            loss=nll(logits/self.temperature,labels); loss.backward(); return loss
+        optT.step(_closure)
+        print(f'   [Calibration] temperature = {self.temperature.item():.3f}')
+        return self
 
 # ---------- EVAL --------------------------------------------------------------------
 def eval_phase(model,dl,th=.5):
@@ -162,24 +165,6 @@ def eval_phase(model,dl,th=.5):
         for k in mb: boots[k].append(mb[k])
     return {k:(base[k],ci(v)) for k,v in boots.items()},y,ŷ
 
-def get_preds(model,dl):
-    model.eval(); y,p=[],[]
-    with torch.no_grad():
-        for x,l in dl:
-            o=model(x.to(device))
-            p.extend(torch.softmax(o,1)[:,CFG.pos_cls].cpu().numpy()); y.extend(l.numpy())
-    return np.asarray(y),np.asarray(p)
-
-# ---------- THRESHOLD ---------------------------------------------------------------
-def optimal_th(y,p):
-    cand=np.clip(np.r_[.001,.5,.999,(np.unique(p)[:-1]+np.unique(p)[1:])/2],0,1)
-    best,bth=-1,.5
-    for t in cand:
-        ŷ=(p>=t).astype(int) if CFG.pos_cls==1 else (p<=t).astype(int)
-        f1=precision_recall_fscore_support(y, ŷ,labels=[0,1],zero_division=0)[2][CFG.pos_cls]
-        if f1>best: best,bth=f1,t
-    return bth
-
 # ---------- PLOTS -------------------------------------------------------------------
 def plot_hist(h):
     e=range(1,len(h['tr_loss'])+1)
@@ -200,37 +185,24 @@ def cm_plot(y,ŷ,name):
 def save_heatmaps(model,dataset,n=50,save_dir='heatmaps'):
     os.makedirs(save_dir,exist_ok=True)
     blk=model.layer4[-1]
-
     acts,grads=[],[]
     def fw_hook(_, __, output):
-        acts.append(output.detach())
-        output.register_hook(lambda g: grads.append(g))
-    h=blk.register_forward_hook(fw_hook)
-    model.eval()
-
+        acts.append(output.detach()); output.register_hook(lambda g: grads.append(g))
+    h=blk.register_forward_hook(fw_hook); model.eval()
     for idx in random.sample(range(len(dataset)),min(n,len(dataset))):
         acts.clear(); grads.clear()
-        pth,_ = dataset.samples[idx]
-        img   = Image.open(pth).convert('RGB')
-        x     = val_tf(img).unsqueeze(0).to(device)
-
-        model.zero_grad()
-        logits = model(x)
+        pth,_=dataset.samples[idx]; img=Image.open(pth).convert('RGB')
+        x=val_tf(img).unsqueeze(0).to(device); model.zero_grad(); logits=model(x)
         logits[0, CFG.pos_cls].backward()
-
-        A, G  = acts[0], grads[0]
-        w     = G.mean(dim=(2,3), keepdim=True)
-        cam   = (w*A).sum(1, keepdim=True).relu()
-        cam   = F.interpolate(cam,(img.size[1],img.size[0]),
-                              mode='bilinear',align_corners=False)[0,0].cpu().numpy()
-        cam   = (cam-cam.min())/(cam.max()+1e-9)
-
-        plt.figure(figsize=(3,3)); plt.imshow(img)
-        plt.imshow(cam,cmap='jet',alpha=.5); plt.axis('off')
-        plt.tight_layout(pad=0)
+        A,G=acts[0],grads[0]; w=G.mean(dim=(2,3),keepdim=True)
+        cam=(w*A).sum(1,keepdim=True).relu()
+        cam=F.interpolate(cam,(img.size[1],img.size[0]),
+                          mode='bilinear',align_corners=False)[0,0].cpu().numpy()
+        cam=(cam-cam.min())/(cam.max()+1e-9)
+        plt.figure(figsize=(3,3)); plt.imshow(img); plt.imshow(cam,cmap='jet',alpha=.5)
+        plt.axis('off'); plt.tight_layout(pad=0)
         plt.savefig(f'{save_dir}/{os.path.basename(pth)}',dpi=300); plt.close()
-    h.remove()
-    print(f'Activation heatmaps saved to \"{save_dir}/\"')
+    h.remove(); print(f'Activation heatmaps saved to \"{save_dir}/\"')
 
 # ---------- MAIN --------------------------------------------------------------------
 def main():
@@ -242,28 +214,32 @@ def main():
     norm, aug, val_tf, dtrans = build_transforms()
 
     dls,imgs=get_dls(); sizes={k:len(v) for k,v in imgs.items()}
-    model=models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-    model.fc=nn.Linear(model.fc.in_features,CFG.n_classes); model=_compile(model.to(device))
+    base_model=models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+    base_model.fc=nn.Linear(base_model.fc.in_features,CFG.n_classes)
+    base_model=_compile(base_model.to(device))
 
-    model,hist=train(model,dls,sizes); plot_hist(hist)
-    yv,pv=get_preds(model,dls['val']); th=optimal_th(yv,pv)
-    print(f'Optimal threshold = {th:.3f}')
+    base_model,hist=train(base_model,dls,sizes); plot_hist(hist)
+
+    # ------------- probability calibration (temperature scaling) ------------------
+    model=ModelWithTemperature(base_model).to(device).set_temperature(dls['val'])
+    th=.5   # fixed threshold on calibrated probs
+    # ------------------------------------------------------------------------------
 
     rows=[]; sets=[('TRN',dls['train']),('VAL',dls['val']),('EXT',dls['external_val'])]
     for lbl,dl in sets:
-        for tname,t in [('0.5',.5),('opt',th)]:
-            res,y,ŷ=eval_phase(model,dl,t); name=f'{lbl}_{tname}'
-            rows.extend([dict(set=name,metric=m,value=v,ci_low=l,ci_high=u)
-                         for m,(v,(l,u)) in res.items()])
-            cm_plot(y, ŷ, name)
-            print(f'\n{name}')
-            for k,(v,(l,u)) in res.items(): print(f' {k:20s}: {v:.4f} ({l:.4f},{u:.4f})')
+        res,y,ŷ=eval_phase(model,dl,th); name=f'{lbl}_cal'
+        rows.extend([dict(set=name,metric=m,value=v,ci_low=l,ci_high=u)
+                     for m,(v,(l,u)) in res.items()])
+        cm_plot(y, ŷ, name)
+        print(f'\n{name}')
+        for k,(v,(l,u)) in res.items():
+            print(f' {k:20s}: {v:.4f} ({l:.4f},{u:.4f})')
 
     pd.DataFrame(rows).to_csv(f'metrics_{CFG.tag}.csv',index=False)
     print(f'\nMetrics saved to metrics_{CFG.tag}.csv')
-    print('All confusion matrices saved (one image per split & threshold).')
+    print('All confusion matrices saved (one image per split).')
 
-    save_heatmaps(model, imgs['val'])
+    save_heatmaps(model.model, imgs['val'])  # use the inner CNN for CAM
 
 if __name__=='__main__':
     warnings.filterwarnings("ignore",category=UserWarning)
