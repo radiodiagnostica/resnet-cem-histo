@@ -185,7 +185,7 @@ def cm_plot(y,ŷ,name):
     plt.savefig(f'cm_{name}_{CFG.tag}.png',dpi=300); plt.close()
 
 # ---------- ACTIVATION HEATMAPS (Grad-CAM) ------------------------------------------
-def save_heatmaps(model,dataset,n=15,save_dir='heatmaps'):
+def save_heatmaps(model,dataset,n=50,save_dir='heatmaps'):
     os.makedirs(save_dir,exist_ok=True)
     blk=model.layer4[-1]
 
