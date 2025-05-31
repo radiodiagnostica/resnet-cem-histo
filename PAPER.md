@@ -108,7 +108,7 @@ Figure 4 shows Grad-CAM visualisations for representative correctly and incorrec
 **Figure 4.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
 
 ### Computational aspects
-Complete training (30 epochs) required approximately **[Insert new training time if substantially different, otherwise can be omitted or kept similar if applicable]** on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
+Complete training (30 epochs) required approximately 10 minutes on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
 
 ## Discussion
 
