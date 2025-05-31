@@ -6,7 +6,7 @@
 
 **Methods**: Cropped tumour regions from CEM images of 105 women with biopsy-proven invasive cancer were used. Patients were randomised into a training set (68 patients, 249 images), a validation set (16 patients, 61 images) and an independent-test set (21 patients, 74 images). A ResNet-18—pre-trained on ImageNet and fine-tuned with weighted cross-entropy and an Adam optimizer—was trained for 30 epochs. The model achieving the highest validation area under the precision-recall curve (PR-AUC) was selected. Performance was reported with accuracy, AUC-ROC and imbalance-aware metrics (balanced accuracy, Matthews correlation coefficient [MCC]); 95 % confidence intervals (CI) were obtained by 1000-iteration bootstrap. Results are presented for both a standard 0.5 threshold and an optimized threshold derived from the validation set.
 
-**Results**: Training PR-AUC reached 0.8732 (0.8260–0.9189 at 0.5 threshold). Validation PR-AUC was 0.6402 (0.3044–0.9056). On the independent-test set, using the optimized threshold (0.829), the network achieved 91.89 % accuracy (86.49–97.30 %), AUC-ROC 0.8078 (0.6482–0.9351), balanced accuracy 0.7000 (0.5500–0.8530) and MCC 0.6047 (0.2961–0.8181).
+**Results**: On the training set, the selected model achieved a PR-AUC of 0.9126 (0.8728–0.9431) using the optimized threshold. Validation PR-AUC (the model selection metric) was 0.6402 (0.3044–0.9056). On the independent-test set, using the optimized threshold (0.829), the network achieved 91.89 % accuracy (86.49–97.30 %), AUC-ROC 0.8078 (0.6482–0.9351), balanced accuracy 0.7000 (0.5500–0.8530) and MCC 0.6047 (0.2961–0.8181).
 
 **Conclusion**: A ResNet-18 fine-tuned with appropriate handling of class imbalance and utilizing patient-level data splitting can capture CEM features related to HR status, performing well even under pronounced class imbalance. The patient-level split provides a robust estimate of generalisability. Small single-centre size and the mixture of early and late CEM phases still limit generalisability; larger multi-institution cohorts are required.
 
@@ -84,32 +84,27 @@ The pipeline is implemented in Python with PyTorch; full requirements and source
 ### Training behaviour
 The training process over 30 epochs is illustrated in **Figure 4**. Weighted cross-entropy loss for the training set generally decreased from an initial 0.6599 (epoch 1) to 0.4803 at epoch 30. Validation loss showed more fluctuation but ended at 0.5877 at epoch 30, having started at 0.8652 (epoch 1) and experiencing some peaks (e.g., 1.2886 at epoch 4) (**Figure 4A**).
 
-Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30. The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (**Figure 4B**). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
+Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30 (**Figure 4B**). The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (**Figure 4B**). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. This epoch-specific training PR-AUC of 0.8296 reflects the metric as tracked during the training process for model selection purposes; the performance of this final selected model on the full training set using the optimized threshold is reported in Table 2 as 0.9126. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
 
 ![train_hist_resnet18_rep.png](train_hist_resnet18_rep.png)
 **Figure 4.** Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.
 
 ### Final model performance
-An optimal classification threshold of 0.829 was determined from the validation set based on maximizing the F1-score for the HR-negative class. Discrimination results with 95 % bootstrap confidence intervals for the independent-test set using this optimal threshold are listed in Table 2. For comparison, results using a standard 0.5 threshold are also provided where relevant.
+An optimal classification threshold of 0.829 was determined from the validation set based on maximizing the F1-score for the HR-negative class. Table 2 presents the discrimination results with 95 % bootstrap confidence intervals for the training, validation, and independent-test sets, comparing performance using a standard 0.5 threshold and this optimal threshold.
 
-*   Training set (optimal threshold): accuracy 73.90 % (CI 68.67–78.71 %), AUC-ROC 0.8841 (0.8359–0.9232), balanced accuracy 0.7441 (0.7008–0.7846), MCC 0.5644 (0.4946–0.6291).
-*   Validation set (optimal threshold): accuracy 91.80 % (CI 83.61–98.36 %), AUC-ROC 0.7821 (0.5667–0.9709), balanced accuracy 0.7682 (0.6049–0.9403), MCC 0.6387 (0.3199–0.8950).
-*   Independent-test set (optimal threshold): accuracy 91.89 % (CI 86.49–97.30 %), AUC-ROC 0.8078 (0.6482–0.9351), balanced accuracy 0.7000 (0.5500–0.8530), MCC 0.6047 (0.2961–0.8181).
-*   Independent-test set (0.5 threshold): accuracy 62.16 % (CI 50.00–72.97 %), AUC-ROC 0.8078 (0.6482–0.9351), balanced accuracy 0.7391 (0.6026–0.8359), MCC 0.3270 (0.1318–0.4908).
+The modest gap between overall accuracy and balanced accuracy on the test set with the optimal threshold (91.9% vs 70.0%) highlights that while overall correct classification is high, performance on the minority class (HR-negative, recall 0.40 with optimal threshold, see full results for details) is more limited, as expected with high class imbalance, despite weighted loss and threshold optimization. Specificity (recall for HR-positive, the majority class) was 1.0000 on the test set with the optimal threshold.
 
-The modest gap between overall accuracy and balanced accuracy on the test set with the optimal threshold (91.9% vs 70.0%) highlights that while overall correct classification is high, performance on the minority class (HR-negative, recall 0.40) is more limited, as expected with high class imbalance, despite weighted loss and threshold optimization. Specificity (recall for HR-positive, the majority class) was 1.0000 on the test set with the optimal threshold.
+**Table 2.** Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.829) derived from the validation set. Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class.
 
-| Metric              | Training set (opt th.) | Validation set (opt th.) | Independent-test set (opt th.) |
-|---------------------|------------------------|--------------------------|--------------------------------|
-| Accuracy            | 0.7390 (0.6867–0.7871) | 0.9180 (0.8361–0.9836)   | 0.9189 (0.8649–0.9730)         |
-| Balanced accuracy   | 0.7441 (0.7008–0.7846) | 0.7682 (0.6049–0.9403)   | 0.7000 (0.5500–0.8530)         |
-| MCC                 | 0.5644 (0.4946–0.6291) | 0.6387 (0.3199–0.8950)   | 0.6047 (0.2961–0.8181)         |
-| AUC-ROC             | 0.8841 (0.8359–0.9232) | 0.7821 (0.5667–0.9709)   | 0.8078 (0.6482–0.9351)         |
-| **PR-AUC (HR-neg)** | **0.9126 (0.8728–0.9431)** | **0.6402 (0.3044–0.9056)** | **0.5817 (0.2754–0.8267)**     |
+| Metric              | Training (0.5 th.)       | Training (opt th. 0.829) | Validation (0.5 th.)     | Validation (opt th. 0.829)| Test (0.5 th.)           | Test (opt th. 0.829)      |
+|---------------------|--------------------------|---------------------------|--------------------------|---------------------------|--------------------------|---------------------------|
+| Accuracy            | 0.7831 (0.7309–0.8353)   | 0.7390 (0.6867–0.7871)    | 0.6557 (0.5246–0.7705)   | 0.9180 (0.8361–0.9836)    | 0.6216 (0.5000–0.7297)   | 0.9189 (0.8649–0.9730)    |
+| Balanced accuracy   | 0.7819 (0.7322–0.8332)   | 0.7441 (0.7008–0.7846)    | 0.6603 (0.4681–0.8359)   | 0.7682 (0.6049–0.9403)    | 0.7391 (0.6026–0.8359)   | 0.7000 (0.5500–0.8530)    |
+| MCC                 | 0.5687 (0.4682–0.6687)   | 0.5644 (0.4946–0.6291)    | 0.2327 (-0.0414–0.4824)  | 0.6387 (0.3199–0.8950)    | 0.3270 (0.1318–0.4908)   | 0.6047 (0.2961–0.8181)    |
+| AUC-ROC             | 0.8558 (0.8064–0.8986)   | 0.8841 (0.8359–0.9232)    | 0.7821 (0.5667–0.9709)   | 0.7821 (0.5667–0.9709)    | 0.8078 (0.6482–0.9351)   | 0.8078 (0.6482–0.9351)    |
+| **PR-AUC (HR-neg)** | **0.8732 (0.8260–0.9189)** | **0.9126 (0.8728–0.9431)** | **0.6402 (0.3044–0.9056)** | **0.6402 (0.3044–0.9056)** | **0.5817 (0.2754–0.8267)** | **0.5817 (0.2754–0.8267)** |
 
-**Table 2.** Performance metrics for the final ResNet-18 model using the optimal threshold (0.829); values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class.
-
-**Figure 5** shows Grad-CAM visualisations for representative correctly and incorrectly classified cases, illustrating that network attention generally overlaps the enhancing tumour region.
+**Figure 5** shows Grad-CAM visualisations for representative cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
 ![activated-cropped-cems](activated-cropped-cems.png)
 **Figure 5.** Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.
