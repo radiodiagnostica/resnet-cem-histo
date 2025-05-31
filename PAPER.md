@@ -17,6 +17,8 @@ csl: cit-style.csl
 
 **Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammogra-phy, Artificial Intelligence, Precision Medicine.
 
+**Abbreviations**: AI (Artificial Intelligence); AUC (Area Under the Curve); AUC-ROC (Area Under the Receiver Operating Characteristic curve); CC (Craniocaudal); CEM (Contrast-Enhanced Mammography); CI (Confidence Interval); CNN (Convolutional Neural Network, plural: CNNs); ER (Oestrogen Receptor); Grad-CAM (Gradient-weighted Class Activation Mapping); HER2 (Human Epidermal growth factor Receptor 2); HR (Hormone Receptor); MCC (Matthews Correlation Coefficient); MLO (Mediolateral-Oblique); MRI (Magnetic Resonance Imaging); PAM50 (Prediction Analysis of Microarray 50); PR (Progesterone Receptor); PR-AUC (Area Under the Precision-Recall Curve); ResNet-18 (Residual Network 18); ROI (Region Of Interest, plural: ROIs); WHO (World Health Organization).
+
 **Key points:**
 
 *   ResNet-18 predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an optimized threshold and patient-level splitting.
