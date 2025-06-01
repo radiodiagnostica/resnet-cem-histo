@@ -143,7 +143,7 @@ def tune_threshold(y,p,goal='f1',beta=1,min_recall=None):
         if   goal=='f1':      score=f1
         elif goal=='fbeta':   score=(1+beta**2)*prec*rec/(beta**2*prec+rec+1e-8)
         elif goal=='bal_acc': score=balanced_accuracy_score(y, ŷ)
-        elif goal=='youden':  score=rec + (1 - (f1*prec)/(prec+1e-9)) - 1  # simple approx
+        elif goal=='youden':  score=2*balanced_accuracy_score(y, ŷ)-1
         else: raise ValueError(goal)
         if score>best: best,bth=score,t
     return bth
