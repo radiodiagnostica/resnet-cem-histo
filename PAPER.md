@@ -2,6 +2,7 @@
 title: "Exploring the Potential of Deep Learning in Predicting Hormone Receptor Status from Contrast-Enhanced Mammography Images: A Preliminary Study"
 bibliography: citations.bib
 csl: cit-style.csl
+tblPrefix: "Table"
 ---
 <!-- Convert with: "pandoc PAPER.md --filter pandoc-crossref --citeproc --reference-doc=word_template.docx -o paper.docx -N" -->
 
