@@ -46,7 +46,7 @@ To provide a transparent benchmark that explicitly addresses class imbalance and
 ## Materials and Methods
 
 ### Study design and ethics
-This retrospective, single-centre feasibility study was approved by the institutional ethics committee. All 105 women analysed had previously provided written consent for anonymised research use of their imaging and pathology data.
+This retrospective, single-centre feasibility study was approved by the institutional ethics committee. The overall study pipeline is illustrated in @fig:overview. All 105 women analysed had previously provided written consent for anonymised research use of their imaging and pathology data.
 
 ### Patient cohort
 Women who underwent contrast-enhanced mammography (CEM) between October 2020 and May 2022 for pre-operative staging of biopsy-proven invasive breast cancer were screened. Departmental policy restricts CEM to patients aged ≥ 30 years, so younger women are absent. All tumours were clinical stage T1–T2 at presentation. Contra-indications to CEM (pregnancy, breast implants, impaired renal function, severe contrast reaction) preclude referral and are therefore not represented.
@@ -56,7 +56,7 @@ Hormone-receptor (HR) status was copied verbatim from each pathology report. A c
 ### CEM protocol
 Imaging was performed on a Hologic Selenia Dimension system. After intravenous iodinated contrast (Iomeron 350, 1.5 mL kg⁻¹; maximum 110 mL) at 2–3 mL s⁻¹, dual-energy two-dimensional craniocaudal (CC) and mediolateral-oblique (MLO) views of the affected breast were acquired 2 minutes post-injection.
 
-Because the dataset is small, late low-dose images acquired 7 minutes after contrast injection were also retained. The impact of mixing early and late phases is unknown and is considered a limitation. Only recombined (subtracted) images of the tumour-bearing breast were analysed; low-energy images and all contralateral views were excluded.
+Because the dataset is small, late low-dose images acquired 7 minutes after contrast injection were also retained. The impact of mixing early and late phases is unknown and is considered a limitation. Only recombined (subtracted) images of the tumour-bearing breast were analysed (representative examples shown in @fig:raw-cems); low-energy images and all contralateral views were excluded.
 
 Images included in the analysis were those deemed clinically acceptable at the time of acquisition; however, a formal secondary review for subtle artifacts or image quality scoring specifically for this research study was not performed.
 
@@ -65,7 +65,7 @@ Images included in the analysis were those deemed clinically acceptable at the t
 ### Region-of-interest definition and preprocessing
 Enhancing lesions were localised on the recombined images and cropped manually with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately. The precise extent of the surrounding tissue and the approach in cases of very high or heterogeneous background parenchymal enhancement were based on the operator's judgment to best encompass the visible lesion, which may introduce some variability.
 
-Input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
+The resulting manually cropped ROIs (examples provided in @fig:cropped-rois) served as the input images for the model. These input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
 
 ![Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.](raw-cems.png){#fig:raw-cems}
 
