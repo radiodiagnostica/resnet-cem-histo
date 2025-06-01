@@ -33,7 +33,7 @@ figPrefix: "Figure"
 
 This work explores whether routinely acquired CEM images contain enough information for deep-learning prediction of hormone-receptor status, aiming at a less invasive complement to biopsy. A ResNet-18 was trained with weighted loss and patient-level data splits; performance was quantified with imbalance-aware metrics to provide a realistic assessment in a highly skewed dataset, highlighting both the promise and current constraints of CEM-based molecular imaging.
 
-## Introduction
+## Background
 
 Breast cancer is the most frequently diagnosed malignancy worldwide, with about 2.3 million new cases and 670 000 deaths in 2022 according to the latest WHO fact-sheet [@world_health_organization_breast_nodate]. Because the disease is biologically heterogeneous, expression of the oestrogen (ER) and progesterone (PR) receptors—summarised as hormone-receptor (HR) status—remains a pivotal determinant of systemic-treatment strategy and prognosis [@harbeck_breast_2017]. HR status is routinely assessed on tissue obtained by core biopsy or surgery, but this invasive approach is time-consuming, prone to sampling error and limited in its ability to capture spatial heterogeneity [@viale_current_2012; @bedard_tumour_2013]. A rapid, image-based surrogate could therefore complement or, in selected scenarios, reduce the need for tissue sampling.
 
