@@ -17,7 +17,7 @@ figPrefix: "Figure"
 
 **Results**: On the training set, the selected model achieved a PR-AUC of 0.9279 (0.8961–0.9544) using the optimized threshold. Validation PR-AUC (the model selection metric) was 0.6402 (0.3044–0.9056). On the independent-test set, using the optimized threshold (0.755), the network achieved 91.89 % accuracy (86.49–97.30 %), AUC-ROC 0.8078 (0.6482–0.9351), balanced accuracy 0.7000 (0.5500–0.8530) and MCC 0.6047 (0.2961–0.8181).
 
-**Conclusion**: A ResNet-18 fine-tuned with appropriate handling of class imbalance and utilizing patient-level data splitting can capture CEM features related to HR status, performing well even under pronounced class imbalance. The patient-level split provides a robust estimate of generalisability. Small single-centre size and the mixture of early and late CEM phases still limit generalisability; larger multi-institution cohorts are required.
+**Conclusion**: A ResNet-18 fine-tuned with appropriate handling of class imbalance and utilizing patient-level data splitting can capture CEM features related to HR status, performing well even under pronounced class imbalance. Small single-centre size and the mixture of early and late CEM phases still limit generalisability; larger multi-institution cohorts are required.
 
 **Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammogra-phy, Artificial Intelligence, Precision Medicine.
 
@@ -25,7 +25,7 @@ figPrefix: "Figure"
 
 **Key points:**
 
-*   ResNet-18 predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an F1-optimized threshold and patient-level splitting.
+*   A ResNet-18, optimized for class imbalance through weighted training and with calibrated probabilities, predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an F1-tuned threshold.
 *   Balanced accuracy (0.70) and MCC (0.60) demonstrate maintained discrimination despite an approximate 85 % class imbalance (HR-positive cases).
 *   Patient-level splitting was employed to ensure robust evaluation. Limitations related to the dataset's scope and specific imaging protocols may influence broader generalizability.
 
