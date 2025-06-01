@@ -3,6 +3,7 @@ title: "Exploring the Potential of Deep Learning in Predicting Hormone Receptor 
 bibliography: citations.bib
 csl: cit-style.csl
 tblPrefix: "Table"
+figPrefix: "Figure"
 ---
 <!-- Convert with: "pandoc PAPER.md --filter pandoc-crossref --citeproc --reference-doc=word_template.docx -o paper.docx -N" -->
 
@@ -59,16 +60,16 @@ Because the dataset is small, late low-dose images acquired 7 minutes after cont
 
 Images included in the analysis were those deemed clinically acceptable at the time of acquisition; however, a formal secondary review for subtle artifacts or image quality scoring specifically for this research study was not performed.
 
-![Figure 1. Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.](overview-figure.png)
+![Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.](overview-figure.png){#fig:overview}
 
 ### Region-of-interest definition and preprocessing
 Enhancing lesions were localised on the recombined images and cropped manually with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately. The precise extent of the surrounding tissue and the approach in cases of very high or heterogeneous background parenchymal enhancement were based on the operator's judgment to best encompass the visible lesion, which may introduce some variability.
 
 Input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
 
-![Figure 2. Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.](raw-cems.png)
+![Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.](raw-cems.png){#fig:raw-cems}
 
-![Figure 3. Examples of manually cropped regions of interest (ROIs) that were used as model input.](cropped-cems.png)
+![Examples of manually cropped regions of interest (ROIs) that were used as model input.](cropped-cems.png){#fig:cropped-rois}
 
 ### Dataset split
 From the 105 patients (88 HR-positive, 17 HR-negative), 384 images were derived. Patients were randomly assigned, stratified by HR status, to a training set (68 patients: 57 HR-positive, 11 HR-negative; yielding 249 images: 213 HR-positive, 36 HR-negative), a validation set (16 patients: 13 HR-positive, 3 HR-negative; yielding 61 images: 52 HR-positive, 9 HR-negative) and an independent-test set (21 patients: 18 HR-positive, 3 HR-negative; yielding 74 images: 64 HR-positive, 10 HR-negative). HR-positive cases comprised ~85 % of patients in every subset. This patient-level split ensures that images from the same patient do not appear in multiple subsets, mitigating information leakage. While this stratification aimed to balance the primary outcome, a detailed characterization of other clinical or imaging features (e.g., tumor size, grade, background enhancement) across the splits was beyond the scope of this preliminary study and represents a potential source of unassessed variability.
@@ -87,11 +88,11 @@ The pipeline is implemented in Python with PyTorch; full requirements and source
 ## Results
 
 ### Training behaviour
-The training process over 30 epochs is illustrated in Figure 4. Weighted cross-entropy loss for the training set generally decreased from an initial 0.6599 (epoch 1) to 0.4803 at epoch 30. Validation loss showed more fluctuation but ended at 0.5877 at epoch 30, having started at 0.8652 (epoch 1) and experiencing some peaks (e.g., 1.2886 at epoch 4) (Figure 4A).
+The training process over 30 epochs is illustrated in @fig:train-hist. Weighted cross-entropy loss for the training set generally decreased from an initial 0.6599 (epoch 1) to 0.4803 at epoch 30. Validation loss showed more fluctuation but ended at 0.5877 at epoch 30, having started at 0.8652 (epoch 1) and experiencing some peaks (e.g., 1.2886 at epoch 4) (@fig:train-hist (A)).
 
-Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30 (Figure 4B). The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (Figure 4B). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. Post-training, temperature scaling was applied to this model using the validation set, resulting in an optimal temperature of 1.386. This epoch-specific training PR-AUC of 0.8296 reflects the metric as tracked during the training process for model selection purposes; the performance of this final selected and calibrated model on the full training set using the optimized threshold is reported in @tbl:results as 0.9279. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
+Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30 (@fig:train-hist (B)). The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (@fig:train-hist (B)). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. Post-training, temperature scaling was applied to this model using the validation set, resulting in an optimal temperature of 1.386. This epoch-specific training PR-AUC of 0.8296 reflects the metric as tracked during the training process for model selection purposes; the performance of this final selected and calibrated model on the full training set using the optimized threshold is reported in @tbl:results as 0.9279. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
 
-![Figure 4. Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.](train_hist_resnet18_rep.png)
+![Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.](train_hist_resnet18_rep.png){#fig:train-hist}
 
 ### Final model performance
 An optimal classification threshold of 0.755 was determined from the validation set based on maximizing the F1-score for the HR-negative class. @tbl:results presents the discrimination results with 95 % bootstrap confidence intervals for the training, validation, and independent-test sets, comparing performance using a standard 0.5 threshold and this optimal threshold.
@@ -108,9 +109,9 @@ The modest gap between overall accuracy and balanced accuracy on the test set wi
 
 Table: Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.755, F1-tuned on validation set for HR-negative class). Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class. {#tbl:results}
 
-Figure 5 shows Grad-CAM visualisations for representative cases, illustrating that network attention generally overlaps the enhancing tumour region.
+@fig:gradcam shows Grad-CAM visualisations for representative cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
-![Figure 5. Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.](activated-cropped-cems.png)
+![Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.](activated-cropped-cems.png){#fig:gradcam}
 
 ### Computational aspects
 Complete training (30 epochs) required approximately 10 minutes on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
