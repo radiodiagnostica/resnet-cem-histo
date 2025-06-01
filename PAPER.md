@@ -7,7 +7,7 @@ figPrefix: "Figure"
 ---
 <!-- Convert with: "pandoc PAPER.md --filter pandoc-crossref --citeproc --reference-doc=word_template.docx -o paper.docx -N" -->
 
-<!-- Convert removing images and tables with: "pandoc PAPER.md --filter pandoc-crossref --citeproc --reference-doc=word_template.docx -o paper.docx -N --lua-filter filter-ast-target.lua" -->
+<!-- Convert removing images and tables and exporting tables with: "pandoc PAPER.md --filter pandoc-crossref --lua-filter filter-table-exporter.lua --citeproc --reference-doc=word_template.docx -o paper.docx -N --lua-filter filter-ast-target.lua" -->
 
 **Abstract:**
 
