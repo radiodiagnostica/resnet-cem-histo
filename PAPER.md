@@ -27,7 +27,7 @@ figPrefix: "Figure"
 
 *   ResNet-18 predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an F1-optimized threshold and patient-level splitting.
 *   Balanced accuracy (0.70) and MCC (0.60) demonstrate maintained discrimination despite an approximate 85 % class imbalance (HR-positive cases).
-*   Patient-level splitting was employed to ensure robust evaluation. Study limitations include small single-centre dataset and mixing of early- and late-phase CEM images.
+*   Patient-level splitting was employed to ensure robust evaluation. Limitations related to the dataset's scope and specific imaging protocols may influence broader generalizability.
 
 **Relevance statement:**
 
