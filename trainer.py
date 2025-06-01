@@ -232,14 +232,23 @@ def main():
         print(f'Tuned threshold ({CFG.goal}) = {th:.3f}')
     # ---------------------------------------------------------------------------
 
+    # ------------ EVALUATION (tuned-th + fixed 0.5) -------------------
     rows=[]; sets=[('TRN',dls['train']),('VAL',dls['val']),('EXT',dls['external_val'])]
-    for lbl,dl in sets:
-        res,y,ŷ=eval_phase(model,dl,th); name=f'{lbl}_{CFG.goal}'
-        rows.extend([dict(set=name,metric=m,value=v,ci_low=l,ci_high=u)
-                     for m,(v,(l,u)) in res.items()])
-        cm_plot(y, ŷ, name)
-        print(f'\n{name}')
-        for k,(v,(l,u)) in res.items(): print(f' {k:20s}: {v:.4f} ({l:.4f},{u:.4f})')
+
+    # list of (label, threshold) tuples – fixed 0.5 first
+    thr_list = [('fixed', CFG.fixed_th)] if CFG.goal != 'fixed' else []
+    thr_list.append((CFG.goal, th)) # then the requested / tuned one
+
+    for thr_label,thr_val in thr_list:
+        for lbl,dl in sets:
+            res,y,ŷ=eval_phase(model,dl,thr_val)
+            name=f'{lbl}_{thr_label}'
+            rows.extend([dict(set=name,metric=m,value=v,ci_low=l,ci_high=u)
+                         for m,(v,(l,u)) in res.items()])
+            cm_plot(y, ŷ, name)
+            print(f'\n{name}  (th = {thr_val:.3f})')
+            for k,(v,(l,u)) in res.items():
+                print(f' {k:20s}: {v:.4f} ({l:.4f},{u:.4f})')
 
     pd.DataFrame(rows).to_csv(f'metrics_{CFG.tag}.csv',index=False)
     print(f'\nMetrics saved to metrics_{CFG.tag}.csv')
