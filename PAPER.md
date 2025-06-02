@@ -45,7 +45,7 @@ Collectively, these investigations have moved the field forward but share severa
 
 To provide a transparent benchmark that explicitly addresses class imbalance and ensures robust generalization estimates, we evaluate a ResNet-18 for HR prediction from CEM in a single-centre proof-of-concept study. Tumour regions are manually cropped to isolate lesion-specific signal while keeping preprocessing minimal. Model performance is reported with conventional metrics (accuracy, AUC-ROC) and imbalance-aware measures (balanced accuracy, MCC) to reflect the ≈ 85 % prevalence of HR-positive cases. Crucially, data splitting is performed at the patient level. Although preliminary and single-centre, the work establishes a reproducible reference point for subsequent multi-institution investigations.
 
-## Materials and Methods
+## Methods
 
 ### Study design and ethics
 This retrospective, single-centre feasibility study was approved by the institutional ethics committee. The overall study pipeline is illustrated in @fig:overview. All 105 women analysed had previously provided written consent for anonymised research use of their imaging and pathology data.
