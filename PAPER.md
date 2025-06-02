@@ -21,7 +21,7 @@ figPrefix: "Figure"
 
 **Conclusion**: A ResNet-18 fine-tuned with appropriate handling of class imbalance and utilizing patient-level data splitting can capture CEM features related to HR status, performing well even under pronounced class imbalance. Small single-centre size and the mixture of early and late CEM phases still limit generalisability; larger multi-institution cohorts are required.
 
-**Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammogra-phy, Artificial Intelligence, Precision Medicine.
+**Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammography, Artificial Intelligence, Precision Medicine.
 
 **Abbreviations**: AI (Artificial Intelligence); AUC (Area Under the Curve); AUC-ROC (Area Under the Receiver Operating Characteristic curve); CC (Craniocaudal); CEM (Contrast-Enhanced Mammography); CI (Confidence Interval); CNN (Convolutional Neural Network, plural: CNNs); ER (Oestrogen Receptor); Grad-CAM (Gradient-weighted Class Activation Mapping); HER2 (Human Epidermal growth factor Receptor 2); HR (Hormone Receptor); MCC (Matthews Correlation Coefficient); MLO (Mediolateral-Oblique); MRI (Magnetic Resonance Imaging); PAM50 (Prediction Analysis of Microarray 50); PR (Progesterone Receptor); PR-AUC (Area Under the Precision-Recall Curve); ResNet-18 (Residual Network 18); ROI (Region Of Interest, plural: ROIs); WHO (World Health Organization).
 
