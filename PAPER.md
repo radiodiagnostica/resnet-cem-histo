@@ -23,13 +23,13 @@ figPrefix: "Figure"
 
 **Keywords**: Breast Cancer, Deep Learning, Contrast-Enhanced Mammography, Artificial Intelligence, Precision Medicine.
 
-**Abbreviations**: AI (Artificial Intelligence); AUC (Area Under the Curve); AUC-ROC (Area Under the Receiver Operating Characteristic curve); CC (Craniocaudal); CEM (Contrast-Enhanced Mammography); CI (Confidence Interval); CNN (Convolutional Neural Network, plural: CNNs); ER (Oestrogen Receptor); Grad-CAM (Gradient-weighted Class Activation Mapping); HER2 (Human Epidermal growth factor Receptor 2); HR (Hormone Receptor); MCC (Matthews Correlation Coefficient); MLO (Mediolateral-Oblique); MRI (Magnetic Resonance Imaging); PAM50 (Prediction Analysis of Microarray 50); PR (Progesterone Receptor); PR-AUC (Area Under the Precision-Recall Curve); ResNet-18 (Residual Network 18); ROI (Region Of Interest, plural: ROIs); WHO (World Health Organization).
-
 **Key points:**
 
 *   A ResNet-18, optimized for class imbalance through weighted training and with calibrated probabilities, predicted HR positivity on CEM with 91.9 % accuracy and AUC-ROC 0.81 in an independent-test cohort using an F1-tuned threshold.
 *   Balanced accuracy (0.70) and MCC (0.60) demonstrate maintained discrimination despite an approximate 85 % class imbalance (HR-positive cases).
 *   Patient-level splitting was employed to ensure robust evaluation. Limitations related to the dataset's scope and specific imaging protocols may influence broader generalizability.
+
+**Abbreviations**: AI (Artificial Intelligence); AUC (Area Under the Curve); AUC-ROC (Area Under the Receiver Operating Characteristic curve); CC (Craniocaudal); CEM (Contrast-Enhanced Mammography); CI (Confidence Interval); CNN (Convolutional Neural Network, plural: CNNs); ER (Oestrogen Receptor); Grad-CAM (Gradient-weighted Class Activation Mapping); HER2 (Human Epidermal growth factor Receptor 2); HR (Hormone Receptor); MCC (Matthews Correlation Coefficient); MLO (Mediolateral-Oblique); MRI (Magnetic Resonance Imaging); PAM50 (Prediction Analysis of Microarray 50); PR (Progesterone Receptor); PR-AUC (Area Under the Precision-Recall Curve); ResNet-18 (Residual Network 18); ROI (Region Of Interest, plural: ROIs); WHO (World Health Organization).
 
 **Relevance statement:**
 
