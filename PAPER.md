@@ -52,7 +52,7 @@ To provide a transparent benchmark that explicitly addresses class imbalance and
 ### Study design and ethics
 This retrospective, single-centre feasibility study was approved by the institutional ethics committee. The overall study pipeline is illustrated in @fig:overview. All 105 women analysed had previously provided written consent for anonymised research use of their imaging and pathology data.
 
-![Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference.](overview-figure.png){#fig:overview}
+![Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference. CEM: Contrast-Enhanced Mammography; ResNet-18: Residual Network 18.](overview-figure.png){#fig:overview}
 
 ### Patient cohort
 Women who underwent contrast-enhanced mammography (CEM) between October 2020 and May 2022 for pre-operative staging of biopsy-proven invasive breast cancer were screened. Departmental policy restricts CEM to patients aged ≥ 30 years, so younger women are absent. All tumours were clinical stage T1–T2 at presentation. Contra-indications to CEM (pregnancy, breast implants, impaired renal function, severe contrast reaction) preclude referral and are therefore not represented.
@@ -66,14 +66,14 @@ Because the dataset is small, late low-dose images acquired 7 minutes after cont
 
 Images included in the analysis were those deemed clinically acceptable at the time of acquisition; however, a formal secondary review for subtle artifacts or image quality scoring specifically for this research study was not performed.
 
-![Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping.](raw-cems.png){#fig:raw-cems}
+![Representative recombined CEM images (LMLO projection) illustrating the baseline appearance before cropping. CEM: Contrast-Enhanced Mammography; LMLO: Left Mediolateral-Oblique.](raw-cems.png){#fig:raw-cems}
 
 ### Region-of-interest definition and preprocessing
 Enhancing lesions were localised on the recombined images and cropped manually with the workstation viewer (no external annotation software, no mirror-padding). Each rectangular crop covered the lesion and a small rim of surrounding tissue; multifocal tumours were cropped separately. The precise extent of the surrounding tissue and the approach in cases of very high or heterogeneous background parenchymal enhancement were based on the operator's judgment to best encompass the visible lesion, which may introduce some variability.
 
 The resulting manually cropped ROIs (examples provided in @fig:cropped-rois) served as the input images for the model. These input images were converted to 3-channel grayscale. During training, crops were fed to a `RandomResizedCrop((224,224))` layer, followed by `RandomHorizontalFlip`, `RandomRotation(15)`, and `ColorJitter(0.1,0.1)`. Validation and test images underwent `Resize(256)` and `CenterCrop((224,224))`. All images were normalised to the ImageNet mean and standard deviation.
 
-![Examples of manually cropped regions of interest (ROIs) that were used as model input.](cropped-cems.png){#fig:cropped-rois}
+![Examples of manually cropped ROIs that were used as model input. ROIs: Regions of Interest.](cropped-cems.png){#fig:cropped-rois}
 
 ### Dataset split
 From the 105 patients (88 HR-positive, 17 HR-negative), 384 images were derived. Patients were randomly assigned, stratified by HR status, to a training set (68 patients: 57 HR-positive, 11 HR-negative; yielding 249 images: 213 HR-positive, 36 HR-negative), a validation set (16 patients: 13 HR-positive, 3 HR-negative; yielding 61 images: 52 HR-positive, 9 HR-negative) and an independent-test set (21 patients: 18 HR-positive, 3 HR-negative; yielding 74 images: 64 HR-positive, 10 HR-negative). HR-positive cases comprised ~85 % of patients in every subset. This patient-level split ensures that images from the same patient do not appear in multiple subsets, mitigating information leakage. While this stratification aimed to balance the primary outcome, a detailed characterization of other clinical or imaging features (e.g., tumor size, grade, background enhancement) across the splits was beyond the scope of this preliminary study and represents a potential source of unassessed variability.
@@ -96,7 +96,7 @@ The training process over 30 epochs is illustrated in @fig:train-hist. Weighted 
 
 Training PR-AUC (HR-negative as positive class) showed a general upward trend, increasing from 0.5459 at epoch 1 to 0.8296 by epoch 30 (@fig:train-hist (B)). The validation PR-AUC, the primary criterion for model selection, fluctuated throughout training, achieving its maximum value of 0.6402 at epoch 30 (@fig:train-hist (B)). Consequently, the model checkpoint from epoch 30 was selected for final evaluation. Post-training, temperature scaling was applied to this model using the validation set, resulting in an optimal temperature of 1.386. This epoch-specific training PR-AUC of 0.8296 reflects the metric as tracked during the training process for model selection purposes; the performance of this final selected and calibrated model on the full training set using the optimized threshold is reported in @tbl:results as 0.9279. The ReduceLROnPlateau scheduler did not trigger a learning rate reduction during these 30 epochs.
 
-![Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected.](train_hist_resnet18_rep.png){#fig:train-hist}
+![Training history over 30 epochs: (A) Weighted cross-entropy loss for training (blue line, `train`) and validation (orange line, `val`) sets. (B) Area under the precision-recall curve (PR-AUC) for the HR-negative class for training (blue line, `train`) and validation (orange line, `val`) sets. The model from epoch 30, achieving the highest validation PR-AUC (0.6402), was selected. PR-AUC: Area Under the Precision-Recall Curve; HR: Hormone Receptor.](train_hist_resnet18_rep.png){#fig:train-hist}
 
 ### Final model performance
 An optimal classification threshold of 0.755 was determined from the validation set based on maximizing the F1-score for the HR-negative class. @tbl:results presents the discrimination results with 95 % bootstrap confidence intervals for the training, validation, and independent-test sets, comparing performance using a standard 0.5 threshold and this optimal threshold.
@@ -117,11 +117,11 @@ The modest gap between overall accuracy and balanced accuracy on the test set wi
 | Precision (HR-)               |  0.7674 (0.6923–0.8372)   |  1.0000 (1.0000–1.0000)   |  0.2500 (0.0952–0.4446)   |  0.8333 (0.5000–1.0000)   |  0.2500 (0.1176–0.4000)   |  1.0000 (1.0000–1.0000)   |
 | F1-score (HR-)                |  0.7888 (0.7325–0.8441)   |  0.5967 (0.5095–0.6784)   |  0.3636 (0.1538–0.5641)   |  0.6667 (0.3333–0.9091)   |  0.3913 (0.2051–0.5556)   |  0.5714 (0.1818–0.8277)   |
 
-Table: Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.755, F1-tuned on validation set for HR-negative class). Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class. {#tbl:results}
+Table: Performance metrics for the final ResNet-18 model on all data subsets, comparing a standard 0.5 classification threshold and the optimized threshold (0.755, F1-tuned on validation set for HR-negative class). Values are point estimates followed by 95 % confidence intervals. PR-AUC is for the HR-negative class. AUC-ROC: Area Under the Receiver Operating Characteristic curve; MCC: Matthews Correlation Coefficient; PR-AUC: Area Under the Precision-Recall curve (for the HR-negative class); HR+: Hormone Receptor positive; HR-: Hormone Receptor negative. {#tbl:results}
 
 @fig:gradcam shows Grad-CAM visualisations for representative cases, illustrating that network attention generally overlaps the enhancing tumour region.
 
-![Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction.](activated-cropped-cems.png){#fig:gradcam}
+![Grad-CAM heat-maps overlaid on cropped CEM images. Warm colours denote regions that contributed most to the HR-status prediction. Grad-CAM: Gradient-weighted Class Activation Mapping; CEM: Contrast-Enhanced Mammography; HR: Hormone Receptor.](activated-cropped-cems.png){#fig:gradcam}
 
 ### Computational aspects
 Complete training (30 epochs) required approximately 10 minutes on an Apple M2 laptop with 8 GB unified memory. Inference time per image was not formally measured.
