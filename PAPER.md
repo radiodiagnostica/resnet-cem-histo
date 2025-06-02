@@ -55,7 +55,7 @@ This retrospective, single-centre feasibility study was approved by the institut
 ![Schematic overview of the study pipeline: CEM acquisition, manual cropping, data augmentation, ResNet-18 training, and inference. CEM: Contrast-Enhanced Mammography; ResNet-18: Residual Network 18.](overview-figure.png){#fig:overview}
 
 ### Patient cohort
-Women who underwent contrast-enhanced mammography (CEM) between October 2020 and May 2022 for pre-operative staging of biopsy-proven invasive breast cancer were screened. Departmental policy restricts CEM to patients aged ≥ 30 years, so younger women are absent. All tumours were clinical stage T1–T2 at presentation. Contra-indications to CEM (pregnancy, breast implants, impaired renal function, severe contrast reaction) preclude referral and are therefore not represented.
+Women who underwent CEM between October 2020 and May 2022 for pre-operative staging of biopsy-proven invasive breast cancer were screened. Departmental policy restricts CEM to patients aged ≥ 30 years, so younger women are absent. All tumours were clinical stage T1–T2 at presentation. Contra-indications to CEM (pregnancy, breast implants, impaired renal function, severe contrast reaction) preclude referral and are therefore not represented.
 
 HR status was copied verbatim from each pathology report. A case was labelled HR-positive when either ER or PR was marked “positive” by the institutional pathology service. This reported status served as the reference standard for the study. HR-negative was considered the positive class (minority class, label '1') for metrics like PR-AUC and for threshold optimization.
 
