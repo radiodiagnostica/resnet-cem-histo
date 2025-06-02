@@ -9,6 +9,9 @@ figPrefix: "Figure"
 
 <!-- Convert removing images and tables and exporting tables with: "pandoc PAPER.md --filter pandoc-crossref --lua-filter filter-table-exporter.lua --citeproc --reference-doc=word_template.docx -o paper.docx -N --lua-filter filter-ast-target.lua" -->
 
+<!-- Convert to GFM with: "pandoc PAPER.md --filter pandoc-crossref --citeproc -N -s -t gfm -o paper-edited.md 
+" -->
+
 **Abstract:**
 
 **Background**: Hormone-receptor (HR) status steers systemic therapy in breast cancer but is currently obtained invasively. Contrast-enhanced mammography (CEM) might offer a non-invasive surrogate if coupled with deep learning. This study investigates this potential using patient-level data splitting to prevent information leakage.
